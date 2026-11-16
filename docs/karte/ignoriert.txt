@@ -1,0 +1,7 @@
+# Dateien, die keine Modulnotiz brauchen. Ein Glob pro Zeile, Syntax wie `paths`.
+# `.claude/**` und `docs/karte/**` sind immer ausgenommen.
+docs/**
+*.md
+LICENSE*
+.gitignore
+.gitattributes
