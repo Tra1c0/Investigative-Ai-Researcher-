@@ -6,20 +6,136 @@ on:
     paths:
       - "android/**"
       - "recherche/**"
+      - "tests/**"
       - ".github/workflows/apk.yml"
 
 permissions:
   contents: read
 
+env:
+  # "0": der Starttest verlangt nur, dass Python und das Paket starten.
+  # "1": zusaetzlich 'recherche: server ok' und der Text 'Fälle' in der Oberfläche.
+  UI_PFLICHT: "0"
+
 jobs:
-  probe:
+  tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - name: Werkzeuge auf dem Runner
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Tests
+        run: python3 -m unittest discover -s tests
+
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: gradle/actions/wrapper-validation@v6
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      # Chaquopy braucht auf der Build-Maschine dasselbe Python wie die App (version = "3.13").
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Keine Kopie des Python-Pakets unter android/
         run: |
-          java -version 2>&1 | head -1
-          gradle --version | grep -E "^Gradle" || true
-          python3 --version
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          ls "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools" 2>/dev/null | tr '\n' ' '
+          if find android -path '*/build' -prune -o -name '__init__.py' -print | grep .; then
+            echo "Unter android/ liegt eine Kopie des Pakets"; exit 1
+          fi
+      - name: Verfügbare Versionen des Android-Gradle-Plugins (nur zur Information)
+        run: |
+          curl -fsS https://dl.google.com/dl/android/maven2/com/android/application/com.android.application.gradle.plugin/maven-metadata.xml \
+            | grep -E '<version>8\.1[0-9]|<latest>|<release>|<version>9\.' | tr -d ' \n'; echo || true
+      - name: APK bauen
+        working-directory: android
+        run: ./gradlew --no-daemon --console=plain :app:assembleDebug
+      - name: Chaquopy-Tasks (nur zur Information)
+        working-directory: android
+        run: ./gradlew --no-daemon --console=plain -q :app:tasks --all | grep -i python || true
+      - name: APK bereitstellen
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk recherche-debug.apk
+          ls -l recherche-debug.apk
+          sha256sum recherche-debug.apk
+          unzip -l recherche-debug.apk | grep -E 'assets/chaquopy|libpython|lib/(arm64-v8a|x86_64)/' | head -20
+      - uses: actions/upload-artifact@v7
+        with:
+          name: recherche-apk
+          path: recherche-debug.apk
+          if-no-files-found: error
+
+  starttest:
+    needs: apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: recherche-apk
+          path: apk
+      - name: KVM aktivieren
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Emulator starten und App prüfen
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash android/ci/starttest.sh apk/recherche-debug.apk starttest-out
+      - name: Ergebnis des Starttests
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: starttest-ergebnis
+          path: starttest-out
+          if-no-files-found: warn
+
+  veroeffentlichen:
+    needs: [apk, starttest]
+    if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/ccr-f03ca82c-8hm3p9' || github.ref == 'refs/heads/main') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: apk-vorab
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: recherche-apk
+          path: apk
+      - name: Release ersetzen
+        run: |
+          sha=$(sha256sum apk/recherche-debug.apk | cut -d' ' -f1)
+          {
+            echo "Commit: ${GITHUB_SHA::7}"
+            echo "Gebaut am: $(date -u +%Y-%m-%d)"
+            echo "SHA-256: $sha"
+            echo
+            echo "Debug-Build zum direkten Installieren. Enthält keine Falldaten und keine KI; die Agenten laufen in Claude Code."
+          } > notes.md
+          cat notes.md
+          gh release delete apk-vorab --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || echo "Kein altes Release vorhanden"
+          gh release create apk-vorab apk/recherche-debug.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Recherche-App (Vorabversion)" \
+            --prerelease \
+            --notes-file notes.md
+          gh release view apk-vorab --repo "$GITHUB_REPOSITORY" --json assets,isPrerelease,targetCommitish \
+            --jq '"prerelease=\(.isPrerelease) ziel=\(.targetCommitish) assets=\([.assets[] | "\(.name) \(.size) \(.digest)"] | join(","))"'
+          echo "Download: https://github.com/$GITHUB_REPOSITORY/releases/download/apk-vorab/recherche-debug.apk"

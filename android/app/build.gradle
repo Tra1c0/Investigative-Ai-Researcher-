@@ -1,0 +1,63 @@
+plugins {
+    id 'com.android.application'
+    id 'com.chaquo.python'
+}
+
+android {
+    namespace 'app.recherche.fallakte'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'app.recherche.fallakte'
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName '0.1.0'
+
+        ndk {
+            abiFilters 'arm64-v8a', 'x86_64'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+// Einzige Quelle der Python-Dateien ist ../recherche im Repository. Der Sync-Task spiegelt
+// sie vor dem Zusammenfuehren der Chaquopy-Quellen nach build/python-src (nie ins Git).
+def pythonQuelle = layout.buildDirectory.dir('python-src').get().asFile
+
+tasks.register('syncPython', Sync) {
+    from(rootProject.file('../recherche')) {
+        into 'recherche'
+        exclude '**/__pycache__/**', '**/*.pyc'
+    }
+    into pythonQuelle
+}
+
+tasks.configureEach { task ->
+    if (task.name != 'syncPython' && task.name.toLowerCase().contains('python')) {
+        task.dependsOn('syncPython')
+    }
+}
+
+chaquopy {
+    defaultConfig {
+        version = '3.13'
+        pip {
+            install 'pypdf'
+        }
+    }
+    sourceSets {
+        getByName('main') {
+            srcDir(pythonQuelle)
+        }
+    }
+}
+
+dependencies {
+    // Nur wegen FileProvider.
+    implementation 'androidx.core:core:1.13.1'
+}

@@ -1,0 +1,6 @@
+// Versionen: Android Gradle plugin 8.13.x liegt in Chaquopys unterstuetztem Bereich (7.3 bis 9.5),
+// braucht Gradle 8.13 (Wrapper) und JDK 17. Siehe docs/karte/module/android-huelle.md.
+plugins {
+    id 'com.android.application' version '8.13.0' apply false
+    id 'com.chaquo.python' version '17.2.0' apply false
+}
