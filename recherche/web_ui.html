@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fallakte</title>
+<style nonce="__NONCE__">
+:root{color-scheme:light dark;--bg:#fafaf7;--fg:#1d1d1b;--muted:#5a5a55;
+--karte:#fff;--rand:#d6d6cc;--link:#0b5cad;--warn-bg:#fff4d6;--warn-fg:#6b4500;
+--sperre:#a61b1b;--btn-bg:#0b5cad;--btn-fg:#fff;--fokus:#0b5cad;
+--belegt-bg:#dcf2e2;--belegt-fg:#12502a;--gestuetzt-bg:#dbe8fb;--gestuetzt-fg:#1b3a82;
+--unbestaetigt-bg:#fdf0c4;--unbestaetigt-fg:#6b4500;--strittig-bg:#eadffb;--strittig-fg:#45228a;
+--widerlegt-bg:#fbdcdc;--widerlegt-fg:#7a1818;--ungeprueft-bg:#e6e7ea;--ungeprueft-fg:#363940;
+--werturteil-bg:#f4f4f1;--werturteil-fg:#2a2a28}
+@media (prefers-color-scheme: dark){:root{--bg:#15171a;--fg:#e8e8e4;--muted:#a3a39c;
+--karte:#1d2024;--rand:#3a3d42;--link:#7db4f0;--warn-bg:#3a2e0e;--warn-fg:#f3d58a;
+--sperre:#ff8a8a;--btn-bg:#7db4f0;--btn-fg:#10151c;--fokus:#7db4f0;
+--belegt-bg:#143a24;--belegt-fg:#a9e8bf;--gestuetzt-bg:#16294f;--gestuetzt-fg:#b4cdf6;
+--unbestaetigt-bg:#3d3210;--unbestaetigt-fg:#f3d98a;--strittig-bg:#2c1d52;--strittig-fg:#d3bdf7;
+--widerlegt-bg:#4a1717;--widerlegt-fg:#f6b5b5;--ungeprueft-bg:#2c2f35;--ungeprueft-fg:#c9ccd3;
+--werturteil-bg:#222426;--werturteil-fg:#d8d8d3}}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);line-height:1.5;font-size:16px;
+font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+overflow-wrap:anywhere}
+a{color:var(--link)}
+main{max-width:52rem;margin:0 auto;padding:16px}
+h1{font-size:1.5rem;line-height:1.25;margin:.4rem 0}
+h2{font-size:1.25rem;margin:1.6rem 0 .5rem}
+h3{font-size:1.05rem;margin:1.2rem 0 .4rem}
+h4{font-size:1rem;margin:0 0 .3rem}
+.kopfzeile{background:var(--karte);border-bottom:1px solid var(--rand)}
+.kopfzeile div{max-width:52rem;margin:0 auto;padding:6px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.kopfzeile a.marke{font-weight:700;text-decoration:none;color:var(--fg);min-height:44px;display:inline-flex;align-items:center}
+.muted{color:var(--muted)}
+.klein{font-size:.875rem}
+.karte{background:var(--karte);border:1px solid var(--rand);border-radius:6px;padding:.7rem .9rem;margin:.7rem 0}
+.beleg{border-left:3px solid var(--rand);padding-left:.8rem;margin:.7rem 0}
+blockquote{margin:.4rem 0;padding:.2rem .8rem;border-left:4px solid var(--rand);background:var(--bg);white-space:pre-wrap}
+.badge{display:inline-block;padding:0 .5rem;border-radius:999px;font-size:.85rem;font-weight:600;border:1px solid currentColor;white-space:nowrap;margin:0 .2rem .2rem 0}
+.b-belegt{background:var(--belegt-bg);color:var(--belegt-fg)}
+.b-gestuetzt{background:var(--gestuetzt-bg);color:var(--gestuetzt-fg)}
+.b-unbestaetigt{background:var(--unbestaetigt-bg);color:var(--unbestaetigt-fg)}
+.b-strittig{background:var(--strittig-bg);color:var(--strittig-fg)}
+.b-widerlegt{background:var(--widerlegt-bg);color:var(--widerlegt-fg)}
+.b-ungeprueft{background:var(--ungeprueft-bg);color:var(--ungeprueft-fg)}
+.b-werturteil{background:var(--werturteil-bg);color:var(--werturteil-fg);border-style:dashed}
+.warnung{background:var(--warn-bg);color:var(--warn-fg);padding:.3rem .6rem;border-radius:4px;margin:.4rem 0;white-space:pre-wrap}
+.bereitschaft{font-weight:600;padding:.6rem .8rem;border:2px solid var(--rand);border-radius:6px;background:var(--karte)}
+.bereitschaft.sperre{border-color:var(--sperre);color:var(--sperre)}
+.meldung{white-space:pre-wrap;border:2px solid var(--rand);border-radius:6px;padding:.5rem .8rem;margin:.6rem 0;background:var(--karte)}
+.meldung.fehler{border-color:var(--sperre);color:var(--sperre)}
+.fehler{white-space:pre-wrap;border:2px solid var(--sperre);color:var(--sperre);border-radius:6px;padding:.5rem .8rem;margin:.6rem 0;background:var(--karte)}
+.knopf,button,input,select,textarea{font:inherit}
+.knopf{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:.4rem .9rem;border:2px solid var(--rand);border-radius:6px;background:var(--karte);color:var(--fg);text-decoration:none;cursor:pointer;margin:0 .4rem .4rem 0}
+.knopf.primaer{background:var(--btn-bg);color:var(--btn-fg);border-color:var(--btn-bg);font-weight:600}
+.knopf:disabled{opacity:.5;cursor:default}
+.knopf.klein{min-height:44px}
+input[type=text],input[type=number],input[type=search],select,textarea{width:100%;min-height:44px;padding:.45rem .6rem;border:2px solid var(--rand);border-radius:6px;background:var(--bg);color:var(--fg);font-size:16px}
+textarea{resize:vertical}
+:focus-visible{outline:3px solid var(--fokus);outline-offset:2px}
+.feld{margin:.7rem 0}
+.feld label,.feld legend{display:block;font-weight:600;margin-bottom:.2rem}
+.feld .hinweis{display:block;color:var(--muted);font-size:.875rem;margin-top:.2rem}
+.feld.schalter{display:flex;align-items:center;gap:.6rem;min-height:44px}
+.feld.schalter label{margin:0;font-weight:400}
+.feld.schalter input,.wahlzeile input{width:24px;height:24px;flex:none}
+fieldset{border:0;padding:0;margin:0;min-width:0}
+.mehrfach{max-height:14rem;overflow-y:auto;border:2px solid var(--rand);border-radius:6px;padding:.2rem .5rem;background:var(--bg)}
+.wahlzeile{display:flex;align-items:flex-start;gap:.6rem;min-height:44px;padding:.3rem 0}
+.wahlzeile label{font-weight:400;margin:0}
+details{margin:.5rem 0}
+details>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600;color:var(--link)}
+details[open]>summary{margin-bottom:.3rem}
+.menue select{font-weight:600}
+.menue .pillen{display:none}
+.pillen a{display:inline-flex;align-items:center;min-height:44px;padding:0 .8rem;border:2px solid var(--rand);border-radius:999px;text-decoration:none;color:var(--fg);margin:0 .3rem .3rem 0;background:var(--karte)}
+.pillen a[aria-current=page]{border-color:var(--btn-bg);font-weight:700}
+@media (min-width:700px){.menue select{display:none}.menue .pillen{display:block}}
+dl.felder{display:grid;grid-template-columns:minmax(6rem,max-content) 1fr;gap:.2rem .8rem;margin:.4rem 0}
+dl.felder dt{font-weight:600}
+dl.felder dd{margin:0;min-width:0}
+ul.liste{padding-left:1.2rem;margin:.3rem 0}
+.zeile{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
+.lesetext{white-space:pre-wrap;line-height:1.65;font-size:1.05rem;border:1px solid var(--rand);border-radius:6px;padding:.7rem .8rem;background:var(--karte);-webkit-user-select:text;user-select:text}
+.treffer{margin:.8rem 0}
+.leiste{position:sticky;bottom:0;background:var(--karte);border-top:2px solid var(--rand);padding:.5rem 16px;margin:0 -16px;z-index:5}
+.leiste .auswahl{max-height:4.5rem;overflow:hidden;font-size:.9rem;margin-bottom:.3rem}
+dialog{width:min(40rem,calc(100% - 16px));max-height:calc(100% - 16px);overflow:auto;background:var(--karte);color:var(--fg);border:2px solid var(--rand);border-radius:8px;padding:12px}
+dialog::backdrop{background:rgba(0,0,0,.55)}
+iframe.dossier{width:100%;height:75vh;min-height:24rem;border:1px solid var(--rand);border-radius:6px;background:#fff}
+footer{max-width:52rem;margin:1.5rem auto 2rem;padding:0 16px}
+.feld.wer{max-width:20rem}
+</style>
+</head>
+<body>
+<div class="kopfzeile"><div>
+<a class="marke" href="#/">Fallakte</a>
+<span class="muted klein">Recherche mit Belegpflicht, lokal</span>
+</div></div>
+<main id="app" tabindex="-1"><p>Lädt …</p></main>
+<footer id="fuss"></footer>
+<script nonce="__NONCE__">
+(function () {
+'use strict';
+
+// ===========================================================================
+// Zustand und Beschriftungen
+// ===========================================================================
+
+const LABEL = {
+  belegt: 'belegt', gestuetzt: 'gestützt', unbestaetigt: 'unbestätigt', strittig: 'strittig',
+  widerlegt: 'widerlegt', ungeprueft: 'ungeprüft', werturteil: 'Werturteil',
+  geschwaecht: 'geschwächt', offen: 'offen', in_arbeit: 'in Arbeit', beantwortet: 'beantwortet',
+  sackgasse: 'Sackgasse', entwurf: 'Entwurf', gesendet: 'gesendet', keine_antwort: 'keine Antwort',
+  tatsache: 'Tatsache', verdacht: 'Verdacht', schlussfolgerung: 'Schlussfolgerung', bewertung: 'Bewertung',
+  person: 'Person', organisation: 'Organisation', amtstraeger: 'Amts- oder Mandatsträger',
+  oeffentlich: 'öffentliche Person', funktion: 'Funktionsträger', privat: 'Privatperson',
+  unbekannt: 'unbekannt', amtlich: 'amtlich', register: 'Register', gericht: 'Gericht',
+  parlament: 'Parlament', eigenangabe: 'Eigenangabe', agentur: 'Agentur', medium: 'Medium',
+  wissenschaft: 'Wissenschaft', ngo: 'NGO', datenbank: 'Datenbank', social: 'soziale Medien',
+  blog: 'Blog', archiv: 'Archiv', sonstiges: 'Sonstiges',
+  pro: 'dafür', contra: 'dagegen', neutral: 'neutral',
+  sperre: 'Sperren', veroeffentlichung: 'Vor einer Veröffentlichung', hinweis: 'Hinweise'
+};
+const ZUVERL = {A: 'A zuverlässig', B: 'B meist zuverlässig', C: 'C ziemlich zuverlässig',
+  D: 'D meist nicht zuverlässig', E: 'E unzuverlässig', F: 'F nicht beurteilbar', '': 'nicht bewertet'};
+const BADGE = {belegt: 'belegt', gestuetzt: 'gestuetzt', unbestaetigt: 'unbestaetigt',
+  strittig: 'strittig', widerlegt: 'widerlegt', ungeprueft: 'ungeprueft', werturteil: 'werturteil',
+  geschwaecht: 'unbestaetigt', offen: 'ungeprueft', in_arbeit: 'unbestaetigt',
+  beantwortet: 'gestuetzt', sackgasse: 'werturteil', entwurf: 'ungeprueft',
+  gesendet: 'unbestaetigt', keine_antwort: 'strittig'};
+const BEFUND = ['belegt', 'gestuetzt', 'strittig', 'unbestaetigt', 'ungeprueft', 'widerlegt', 'werturteil'];
+const STUFEN = ['sperre', 'veroeffentlichung', 'hinweis'];
+const ABSCHNITTE = [['ueberblick', 'Überblick'], ['hypothesen', 'Hypothesen'], ['fragen', 'Fragen'],
+  ['quellen', 'Quellen'], ['behauptungen', 'Behauptungen'], ['akteure', 'Akteure'],
+  ['konfrontation', 'Konfrontation'], ['dossier', 'Dossier']];
+const SLUG = /^[a-z0-9][a-z0-9-]*$/;
+const LESEFENSTER = 3000;
+
+const S = {faelle: [], opt: null, slug: null, fall: null, idx: null, wer: 'nutzer',
+  offen: new Set(), meldung: null, meldungBleibt: false, lesen: {id: null, ab: 0, suche: ''},
+  auswahl: '', lesetext: null};
+
+try { S.wer = localStorage.getItem('recherche.wer') || 'nutzer'; } catch (e) { /* ohne Speicher */ }
+
+const lab = (w) => (w in LABEL ? LABEL[w] : (w || ''));
+const kurz = (t, n) => { t = String(t || '').replace(/\s+/g, ' ').trim(); n = n || 80; return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+const android = () => (window.Android && typeof window.Android === 'object' ? window.Android : null);
+const heute = () => new Date().toISOString().slice(0, 10);
+
+// ===========================================================================
+// DOM-Bausteine: Werte aus der Akte gelangen nur über textContent und Attribute ins DOM
+// ===========================================================================
+
+function el(tag, props) {
+  const e = document.createElement(tag);
+  if (props) {
+    for (const k of Object.keys(props)) {
+      const v = props[k];
+      if (v === undefined || v === null || v === false) continue;
+      if (k === 'class') e.className = v;
+      else if (k === 'text') e.textContent = v;
+      else if (k.slice(0, 2) === 'on') e.addEventListener(k.slice(2), v);
+      else if (k === 'value' || k === 'checked' || k === 'disabled' || k === 'hidden') e[k] = v;
+      else e.setAttribute(k, v === true ? '' : String(v));
+    }
+  }
+  for (let i = 2; i < arguments.length; i++) anhaengen(e, arguments[i]);
+  return e;
+}
+function anhaengen(e, kind) {
+  if (kind === null || kind === undefined || kind === false) return;
+  if (Array.isArray(kind)) { kind.forEach((k) => anhaengen(e, k)); return; }
+  e.append(kind instanceof Node ? kind : document.createTextNode(String(kind)));
+}
+// Leert einen Knoten und hängt verschachtelte Listen, Texte und Knoten an (null wird übersprungen).
+function fuelle(knoten, kinder) { knoten.replaceChildren(); anhaengen(knoten, kinder); }
+const p = (text, klasse) => el('p', {text: text, class: klasse});
+const strong = (t) => el('strong', {text: t});
+
+function badge(status, text) {
+  return el('span', {class: 'badge b-' + (BADGE[status] || 'werturteil'), text: text || lab(status) || 'ohne Status'});
+}
+function marke(text) { return el('span', {class: 'badge b-werturteil', text: text}); }
+
+const istHttp = (u) => /^https?:\/\//i.test(u || '');
+
+// Link zu einer Quelladresse: nur http und https; in der Android-Hülle über die Hülle.
+function extLink(url, text) {
+  if (!istHttp(url)) return el('span', {text: text || url || ''});
+  const a = el('a', {href: url, target: '_blank', rel: 'noopener noreferrer', text: text || url});
+  a.addEventListener('click', (ev) => {
+    const A = android();
+    if (A) { ev.preventDefault(); try { A.oeffneExtern(url); } catch (e) { /* ignorieren */ } }
+  });
+  return a;
+}
+const hash = (...teile) => '#/' + teile.join('/');
+function interner(href, text, klasse) { return el('a', {href: href, text: text, class: klasse}); }
+function quellenLink(id) {
+  const x = S.idx.q[id];
+  return interner(hash('f', S.slug, 'quelle', id), id + (x && x.titel ? ' · ' + kurz(x.titel, 60) : ''));
+}
+
+// ===========================================================================
+// Server
+// ===========================================================================
+
+async function holen(url, opt) {
+  try {
+    return await fetch(url, Object.assign({credentials: 'same-origin'}, opt || {}));
+  } catch (e) {
+    throw new Error('Der lokale Server ist nicht erreichbar.');
+  }
+}
+async function getJson(url) {
+  const r = await holen(url);
+  let d = null;
+  try { d = await r.json(); } catch (e) { /* kein JSON */ }
+  if (!r.ok) throw new Error((d && d.fehler) || ('Fehler ' + r.status));
+  return d;
+}
+async function postJson(url, daten) {
+  const r = await holen(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(daten)});
+  let d = null;
+  try { d = await r.json(); } catch (e) { /* kein JSON */ }
+  if (d && typeof d.code === 'number') return d;
+  throw new Error((d && d.fehler) || ('Fehler ' + r.status));
+}
+async function postBytes(url, datei) {
+  const r = await holen(url, {method: 'POST', headers: {'Content-Type': 'application/octet-stream'}, body: datei});
+  let d = null;
+  try { d = await r.json(); } catch (e) { /* kein JSON */ }
+  if (!r.ok) throw new Error((d && d.fehler) || ('Fehler ' + r.status));
+  return d;
+}
+// Eine Kommandozeile der Fallakte. Optionen mit Wert immer als --name=wert, damit Werte,
+// die mit - beginnen, nicht als Option gelesen werden.
+function befehl(argv, o) {
+  o = o || {};
+  return postJson('/api/befehl', {fall: o.fall === undefined ? S.slug : o.fall, wer: S.wer, argv: argv,
+    eingabe: o.eingabe === undefined ? null : o.eingabe});
+}
+const opt = (name, wert) => '--' + name + '=' + wert;
+const text = (res) => ((res.aus || '') + (res.fehler || '')).trim();
+
+async function ladeFaelle() { S.faelle = await getJson('/api/faelle'); }
+async function ladeFall() {
+  const d = await getJson('/api/export?fall=' + encodeURIComponent(S.slug));
+  const m = (a) => { const r = {}; (a || []).forEach((x) => { r[x.id] = x; }); return r; };
+  S.fall = d;
+  S.idx = {q: m(d.quellen), b: m(d.belege), a: m(d.behauptungen), p: m(d.akteure), h: m(d.hypothesen), f: m(d.fragen)};
+}
+
+// Nach einer Änderung: Akte neu vom Server laden und alles neu zeichnen.
+async function nachErfolg(meldung, nav) {
+  S.meldung = meldung ? {art: 'ok', text: meldung} : null;
+  S.meldungBleibt = true;
+  await ladeFall();
+  if (nav && location.hash !== nav) location.hash = nav; else await render(true);
+}
+async function aktion(argv, o) {
+  try {
+    const res = await befehl(argv, o);
+    if (res.code === 0) { await nachErfolg(text(res)); return; }
+    S.meldung = {art: 'fehler', text: (res.fehler || res.aus).trim()};
+  } catch (e) {
+    S.meldung = {art: 'fehler', text: e.message};
+  }
+  await render(true);
+}
+
+// ===========================================================================
+// Formulare: zeigen den Fehlertext des Werkzeugs neben sich und behalten die Eingaben
+// ===========================================================================
+
+let feldZaehler = 0;
+function feld(f) {
+  const id = 'feld' + (++feldZaehler);
+  const hinweis = f.hinweis ? el('span', {class: 'hinweis', text: f.hinweis}) : null;
+  let wrap, lies;
+  if (f.typ === 'schalter') {
+    const box = el('input', {type: 'checkbox', id: id, checked: !!f.wert});
+    wrap = el('div', {class: 'feld schalter'}, box, el('label', {for: id, text: f.label}));
+    lies = () => box.checked;
+  } else if (f.typ === 'mehrfach') {
+    const boxen = [];
+    const inhalt = (f.optionen || []).map((o, i) => {
+      const bid = id + '-' + i;
+      const box = el('input', {type: 'checkbox', id: bid, value: o[0], checked: (f.wert || []).indexOf(o[0]) >= 0});
+      boxen.push(box);
+      return el('div', {class: 'wahlzeile'}, box, el('label', {for: bid, text: o[1]}));
+    });
+    wrap = el('fieldset', {class: 'feld'}, el('legend', {text: f.label}),
+      inhalt.length ? el('div', {class: 'mehrfach'}, inhalt) : p('(noch nichts vorhanden)', 'muted klein'), hinweis);
+    lies = () => boxen.filter((b) => b.checked).map((b) => b.value);
+  } else {
+    let eingabe;
+    if (f.typ === 'area') {
+      eingabe = el('textarea', {id: id, rows: f.zeilen || 3, placeholder: f.platzhalter});
+      eingabe.value = f.wert || '';
+    } else if (f.typ === 'wahl') {
+      eingabe = el('select', {id: id}, (f.optionen || []).map((o) => el('option', {value: o[0], text: o[1]})));
+      eingabe.value = f.wert === undefined || f.wert === null ? (f.optionen[0] || [''])[0] : f.wert;
+    } else if (f.typ === 'datei') {
+      eingabe = el('input', {id: id, type: 'file', accept: f.akzeptiert});
+    } else {
+      eingabe = el('input', {id: id, type: f.typ === 'zahl' ? 'number' : 'text', placeholder: f.platzhalter,
+        inputmode: f.typ === 'zahl' ? 'numeric' : null, autocomplete: 'off'});
+      eingabe.value = f.wert === undefined || f.wert === null ? '' : f.wert;
+    }
+    wrap = el('div', {class: 'feld'}, el('label', {for: id, text: f.label}), eingabe, hinweis);
+    lies = f.typ === 'datei' ? () => (eingabe.files && eingabe.files[0]) || null : () => eingabe.value;
+  }
+  return {wrap: wrap, lies: lies, name: f.name};
+}
+
+// o.senden(werte) liefert {code, aus, fehler}; bei Fehlern bleiben die Eingaben stehen.
+function formular(felder, o) {
+  const gebaut = felder.map(feld);
+  const fehlerBox = el('div', {class: 'fehler', role: 'alert', hidden: true});
+  const knopf = el('button', {type: 'submit', class: 'knopf primaer', text: o.knopf || 'Speichern'});
+  const form = el('form', {novalidate: true, autocomplete: 'off'}, gebaut.map((g) => g.wrap), fehlerBox, knopf);
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const werte = {};
+    gebaut.forEach((g) => { werte[g.name] = g.lies(); });
+    knopf.disabled = true;
+    fehlerBox.hidden = true;
+    try {
+      const res = await o.senden(werte);
+      if (res.code !== 0) {
+        fehlerBox.textContent = (res.fehler || res.aus || 'Fehlgeschlagen.').trim();
+        fehlerBox.hidden = false;
+      } else {
+        if (o.key) S.offen.delete(o.key);
+        if (o.erfolg) await o.erfolg(res); else await nachErfolg(text(res));
+        return;
+      }
+    } catch (e) {
+      fehlerBox.textContent = e.message;
+      fehlerBox.hidden = false;
+    }
+    knopf.disabled = false;
+  });
+  return form;
+}
+
+function aufklapp(key, titel, inhalt) {
+  const d = el('details', {}, el('summary', {text: titel}), inhalt);
+  if (S.offen.has(key)) d.open = true;
+  d.addEventListener('toggle', () => { if (d.open) S.offen.add(key); else S.offen.delete(key); });
+  return d;
+}
+
+// Auswahllisten aus der Akte
+const keine = [['', '(keine)']];
+const optHyp = () => keine.concat(S.fall.hypothesen.map((h) => [h.id, h.id + ' · ' + kurz(h.text, 60)]));
+const optFrage = () => keine.concat(S.fall.fragen.map((f) => [f.id, f.id + ' · ' + kurz(f.text, 60)]));
+const optAkteur = (mitKeine) => (mitKeine ? keine : []).concat(S.fall.akteure.map((a) => [a.id, a.id + ' · ' + a.name]));
+const optBeleg = (ausser) => S.fall.belege.filter((b) => !ausser || ausser.indexOf(b.id) < 0)
+  .map((b) => [b.id, b.id + ' · ' + b.quelle + ' · „' + kurz(b.zitat, 60) + '“']);
+const optBehauptung = (ausser) => S.fall.behauptungen.filter((c) => c.id !== ausser)
+  .map((c) => [c.id, c.id + ' · ' + kurz(c.text, 60)]);
+const optQuelle = () => keine.concat(S.fall.quellen.map((x) => [x.id, x.id + ' · ' + kurz(x.titel, 60)]));
+const aufzaehlung = (liste, mitKeine) => (mitKeine ? [['', '(offen lassen)']] : []).concat(liste.map((w) => [w, lab(w)]));
+
+// ===========================================================================
+// Routing
+// ===========================================================================
+
+function route() {
+  const t = location.hash.replace(/^#\/?/, '').split('/');
+  if (t[0] === 'f' && SLUG.test(t[1] || '')) {
+    const abschnitt = t[2] || 'ueberblick';
+    if (abschnitt === 'quelle' && /^Q\d+$/.test(t[3] || '')) return {typ: 'quelle', slug: t[1], id: t[3]};
+    return {typ: 'fall', slug: t[1], abschnitt: ABSCHNITTE.some((a) => a[0] === abschnitt) ? abschnitt : 'ueberblick'};
+  }
+  return {typ: 'faelle'};
+}
+
+let zeichnung = 0;
+async function render(behalteScroll) {
+  const nr = ++zeichnung;
+  const r = route();
+  const scroll = window.scrollY;
+  const app = document.getElementById('app');
+  try {
+    if (!S.opt) S.opt = await getJson('/api/optionen');
+    if (r.typ === 'faelle') {
+      S.slug = null; S.fall = null; S.idx = null;
+      await ladeFaelle();
+      if (nr !== zeichnung) return;
+      fuelle(app, seiteFaelle());
+    } else {
+      if (S.slug !== r.slug || !S.fall) { S.slug = r.slug; await ladeFall(); }
+      if (nr !== zeichnung) return;
+      fuelle(app, seiteFall(r));
+    }
+  } catch (e) {
+    S.slug = null; S.fall = null; S.idx = null;
+    app.replaceChildren(el('h1', {text: 'Das ging nicht'}), el('div', {class: 'fehler', role: 'alert', text: e.message}),
+      interner('#/', 'Zur Fallliste', 'knopf'));
+  }
+  document.title = (S.fall ? S.fall.fall.titel + ' · ' : '') + 'Fallakte';
+  fussZeile();
+  if (behalteScroll) window.scrollTo(0, scroll); else { window.scrollTo(0, 0); app.focus({preventScroll: true}); }
+}
+
+function meldungsBox() {
+  if (!S.meldung) return null;
+  return el('div', {class: 'meldung ' + (S.meldung.art === 'fehler' ? 'fehler' : ''), role: S.meldung.art === 'fehler' ? 'alert' : 'status'},
+    S.meldung.text || 'Erledigt.');
+}
+
+function fussZeile() {
+  const eingabe = el('input', {type: 'text', id: 'wer-eingabe', autocomplete: 'off', value: S.wer});
+  eingabe.addEventListener('change', () => {
+    S.wer = eingabe.value.trim() || 'nutzer';
+    eingabe.value = S.wer;
+    try { localStorage.setItem('recherche.wer', S.wer); } catch (e) { /* ohne Speicher */ }
+  });
+  document.getElementById('fuss').replaceChildren(
+    el('div', {class: 'feld wer'}, el('label', {for: 'wer-eingabe', text: 'Name im Protokoll'}), eingabe,
+      el('span', {class: 'hinweis', text: 'Wird bei jeder Änderung in das Protokoll der Akte geschrieben.'})));
+}
+
+// ===========================================================================
+// Fälle
+// ===========================================================================
+
+function seiteFaelle() {
+  const liste = S.faelle.length
+    ? S.faelle.map((f) => el('div', {class: 'karte'}, el('h3', {}, interner(hash('f', f.slug), f.titel || f.slug)),
+      p(f.slug, 'muted klein')))
+    : [p('Noch kein Fall vorhanden. Unten einen anlegen oder eine gesicherte Akte laden.', 'muted')];
+  const neu = formular([
+    {name: 'slug', label: 'Kurzname (Slug)', hinweis: 'Kleinbuchstaben, Ziffern und Bindestrich, z. B. fall-2026-01', platzhalter: 'mein-fall'},
+    {name: 'titel', label: 'Titel'},
+    {name: 'auftrag', label: 'Auftrag', typ: 'area'},
+    {name: 'interesse', label: 'Öffentliches Interesse', typ: 'area', hinweis: 'Warum rechtfertigt die Sache eine Recherche?'}
+  ], {
+    knopf: 'Fall anlegen',
+    senden: (v) => {
+      const argv = ['fall', 'neu', v.slug.trim(), opt('titel', v.titel), opt('auftrag', v.auftrag)];
+      if (v.interesse.trim()) argv.push(opt('interesse', v.interesse));
+      return befehl(argv, {fall: null});
+    },
+    erfolg: async (res) => {
+      const slug = (document.querySelector('#neuer-slug') || {}).value;
+      S.meldung = {art: 'ok', text: text(res)}; S.meldungBleibt = true;
+      location.hash = hash('f', slug);
+    }
+  });
+  // Der Slug wird für die Weiterleitung nach dem Anlegen gebraucht.
+  const slugFeld = neu.querySelector('input[type=text]');
+  slugFeld.id = 'neuer-slug';
+  neu.querySelector('label').setAttribute('for', 'neuer-slug');
+
+  return [el('h1', {text: 'Fälle'}), meldungsBox(), liste,
+    el('h2', {text: 'Neuen Fall anlegen'}), neu,
+    el('h2', {text: 'Gesicherte Akte laden'}), ladenBereich()];
+}
+
+function ladenBereich() {
+  if (android()) {
+    return el('div', {}, p('Wählt eine zuvor gesicherte Akte (Zip) aus dem Speicher des Geräts.', 'muted'),
+      el('button', {type: 'button', class: 'knopf', text: 'Akte laden …', onclick: () => {
+        try { android().importieren(); } catch (e) { S.meldung = {art: 'fehler', text: e.message}; render(true); }
+      }}));
+  }
+  return formular([{name: 'datei', label: 'Zip-Datei einer gesicherten Akte', typ: 'datei', akzeptiert: '.zip,application/zip'}], {
+    knopf: 'Akte laden',
+    senden: async (v) => {
+      if (!v.datei) return {code: 1, aus: '', fehler: 'Keine Datei gewählt.'};
+      const d = await postBytes('/api/laden', v.datei);
+      return {code: 0, aus: 'geladen: ' + d.slug, fehler: ''};
+    }
+  });
+}
+
+// ===========================================================================
+// Rahmen eines Falls
+// ===========================================================================
+
+function seiteFall(r) {
+  const d = S.fall;
+  const aktuell = r.typ === 'quelle' ? 'quellen' : r.abschnitt;
+  const menue = el('div', {class: 'menue'});
+  const wahl = el('select', {'aria-label': 'Abschnitt wählen'}, ABSCHNITTE.map((a) => el('option', {value: a[0], text: a[1]})));
+  wahl.value = aktuell;
+  wahl.addEventListener('change', () => { location.hash = hash('f', S.slug, wahl.value); });
+  menue.append(wahl, el('nav', {class: 'pillen', 'aria-label': 'Abschnitte'}, ABSCHNITTE.map((a) =>
+    el('a', {href: hash('f', S.slug, a[0]), text: a[1], 'aria-current': a[0] === aktuell ? 'page' : null}))));
+  const inhalt = r.typ === 'quelle' ? ansichtQuelle(r.id) : ({
+    ueberblick: ueberblick, hypothesen: ansichtHypothesen, fragen: ansichtFragen, quellen: ansichtQuellen,
+    behauptungen: ansichtBehauptungen, akteure: ansichtAkteure, konfrontation: ansichtKonfrontation,
+    dossier: ansichtDossier})[r.abschnitt]();
+  return [interner('#/', '‹ Alle Fälle', 'klein'), el('h1', {text: d.fall.titel}),
+    p(S.slug, 'muted klein'), menue, meldungsBox(), inhalt];
+}
+
+// ===========================================================================
+// Überblick
+// ===========================================================================
+
+function zielFuer(id) {
+  const m = /^([A-Z])\d+$/.exec(id || '');
+  if (!m) return null;
+  const abschnitt = {Q: null, A: 'behauptungen', B: 'behauptungen', H: 'hypothesen', F: 'fragen', S: 'fragen',
+    P: 'akteure', O: 'akteure', R: 'akteure', E: 'akteure', K: 'konfrontation'}[m[1]];
+  if (m[1] === 'Q') return hash('f', S.slug, 'quelle', id);
+  return abschnitt ? hash('f', S.slug, abschnitt) : null;
+}
+
+function zaehlung(liste, f) {
+  const z = {};
+  liste.forEach((x) => { z[f(x)] = (z[f(x)] || 0) + 1; });
+  return z;
+}
+
+function ueberblick() {
+  const d = S.fall;
+  const anz = zaehlung(d.probleme, (x) => x.stufe);
+  let bereit, klasse = '';
+  if (anz.sperre) { bereit = 'Arbeitsstand: ' + anz.sperre + (anz.sperre === 1 ? ' Sperre' : ' Sperren') + ' offen. Aussagen nicht belastbar.'; klasse = ' sperre'; }
+  else if (anz.veroeffentlichung) bereit = 'Recherchestand geprüft. Vor einer Veröffentlichung offen: ' + anz.veroeffentlichung + (anz.veroeffentlichung === 1 ? ' Punkt.' : ' Punkte.');
+  else bereit = 'Recherchestand geprüft.';
+  const status = zaehlung(d.behauptungen, (c) => c.status);
+  const offeneFragen = d.fragen.filter((f) => f.status === 'offen' || f.status === 'in_arbeit').length;
+
+  const zahlen = el('dl', {class: 'felder'},
+    el('dt', {text: 'Behauptungen'}), el('dd', {}, d.behauptungen.length ? BEFUND.concat(Object.keys(status).filter((s) => BEFUND.indexOf(s) < 0))
+      .filter((s) => status[s]).map((s) => badge(s, lab(s) + ' ' + status[s])) : 'keine'),
+    el('dt', {text: 'Hypothesen'}), el('dd', {text: String(d.hypothesen.length)}),
+    el('dt', {text: 'Fragen'}), el('dd', {text: d.fragen.length + ' (offen: ' + offeneFragen + ')'}),
+    el('dt', {text: 'Quellen'}), el('dd', {text: String(d.quellen.length)}),
+    el('dt', {text: 'Belege'}), el('dd', {text: String(d.belege.length)}),
+    el('dt', {text: 'Suchen'}), el('dd', {text: String(d.suchen.length)}),
+    el('dt', {text: 'Akteure'}), el('dd', {text: String(d.akteure.length)}),
+    el('dt', {text: 'Konfrontationen'}), el('dd', {text: String(d.konfrontationen.length)}));
+
+  const probleme = STUFEN.filter((s) => anz[s]).map((s) => el('section', {},
+    el('h3', {text: lab(s) + ' (' + anz[s] + ')'}),
+    el('ul', {class: 'liste'}, d.probleme.filter((x) => x.stufe === s).map((x) => {
+      const ziel = zielFuer(x.objekt);
+      return el('li', {}, el('span', {class: 'muted', text: x.art + ' · '}),
+        ziel ? interner(ziel, x.objekt) : strong(x.objekt || ''), ' ' + x.text);
+    }))));
+
+  const absaetze = (d.fall.zusammenfassung || '').split(/\n\s*\n/).filter((a) => a.trim());
+  const bearbeiten = formular([
+    {name: 'titel', label: 'Titel', wert: d.fall.titel},
+    {name: 'auftrag', label: 'Auftrag', typ: 'area', wert: d.fall.auftrag},
+    {name: 'interesse', label: 'Öffentliches Interesse', typ: 'area', wert: d.fall.interesse},
+    {name: 'zusammenfassung', label: 'Zusammenfassung', typ: 'area', zeilen: 8, wert: d.fall.zusammenfassung,
+      hinweis: 'Verweise auf Behauptungen als [A1]; das Dossier zeigt dazu deren Status.'}
+  ], {key: 'fall-setzen', senden: (v) => {
+    const argv = ['fall', 'setzen'];
+    ['titel', 'auftrag', 'interesse', 'zusammenfassung'].forEach((n) => { if (v[n] !== d.fall[n]) argv.push(opt(n, v[n])); });
+    return befehl(argv);
+  }});
+
+  return el('div', {},
+    el('div', {class: 'bereitschaft' + klasse, role: 'status', text: bereit}),
+    zahlen, probleme,
+    el('h2', {text: 'Auftrag'}), p(d.fall.auftrag),
+    d.fall.interesse ? el('div', {}, el('h3', {text: 'Öffentliches Interesse'}), p(d.fall.interesse)) : null,
+    el('h2', {text: 'Zusammenfassung'}),
+    absaetze.length ? absaetze.map((a) => p(a)) : p('Noch keine Zusammenfassung.', 'muted'),
+    aufklapp('fall-setzen', 'Falldaten und Zusammenfassung ändern', bearbeiten),
+    el('h2', {text: 'Aktionen'}),
+    el('div', {class: 'zeile'},
+      interner(hash('f', S.slug, 'dossier'), 'Dossier anzeigen', 'knopf primaer'),
+      sichernKnopf(), dossierKnopf()));
+}
+
+function sichernKnopf() {
+  if (android()) {
+    return el('button', {type: 'button', class: 'knopf', text: 'Akte sichern (Zip)', onclick: () => {
+      try { android().exportieren(S.slug); } catch (e) { S.meldung = {art: 'fehler', text: e.message}; render(true); }
+    }});
+  }
+  return el('a', {class: 'knopf', href: '/api/sichern?fall=' + encodeURIComponent(S.slug), download: S.slug + '.zip',
+    target: '_blank', rel: 'noopener noreferrer', text: 'Akte sichern (Zip)'});
+}
+function dossierKnopf() {
+  if (android()) {
+    return el('button', {type: 'button', class: 'knopf', text: 'Dossier teilen / speichern', onclick: () => {
+      try { android().dossierTeilen(S.slug); } catch (e) { S.meldung = {art: 'fehler', text: e.message}; render(true); }
+    }});
+  }
+  return el('a', {class: 'knopf', href: '/api/dossier?fall=' + encodeURIComponent(S.slug), download: 'dossier-' + S.slug + '.html',
+    target: '_blank', rel: 'noopener noreferrer', text: 'Dossier speichern (HTML)'});
+}
+
+// ===========================================================================
+// Hypothesen
+// ===========================================================================
+
+function ansichtHypothesen() {
+  const d = S.fall;
+  const karten = d.hypothesen.map((h) => el('div', {class: 'karte', id: h.id},
+    el('h3', {}, h.id + ' ', badge(h.status)), p(h.text),
+    h.prueft.length ? el('div', {}, strong('Prüft: '), el('ul', {class: 'liste'}, h.prueft.map((x) => el('li', {text: x})))) : null,
+    h.widerlegt.length ? el('div', {}, strong('Würde widerlegt durch: '), el('ul', {class: 'liste'}, h.widerlegt.map((x) => el('li', {text: x})))) : null,
+    h.vermerk ? p('Vermerk: ' + h.vermerk, 'muted') : null,
+    aufklapp('hyp-' + h.id, 'Status setzen', formular([
+      {name: 'status', label: 'Status', typ: 'wahl', optionen: aufzaehlung(S.opt.hypothesen_status), wert: h.status},
+      {name: 'vermerk', label: 'Vermerk (Begründung)', typ: 'area'}
+    ], {key: 'hyp-' + h.id, senden: (v) => befehl(['hypothese', 'status', h.id, v.status, opt('vermerk', v.vermerk)])}))));
+  const neu = formular([
+    {name: 'text', label: 'Hypothese', typ: 'area'},
+    {name: 'prueft', label: 'Was muss stimmen? (eine Aussage je Zeile)', typ: 'area'},
+    {name: 'widerlegt', label: 'Was würde sie widerlegen? (eine Aussage je Zeile)', typ: 'area'}
+  ], {knopf: 'Hypothese anlegen', senden: (v) => {
+    const argv = ['hypothese', 'neu', opt('text', v.text)];
+    zeilen(v.prueft).forEach((x) => argv.push(opt('prueft', x)));
+    zeilen(v.widerlegt).forEach((x) => argv.push(opt('widerlegt', x)));
+    return befehl(argv);
+  }});
+  return el('div', {}, el('h2', {text: 'Hypothesen'}), karten.length ? karten : p('Noch keine Hypothese.', 'muted'),
+    aufklapp('hyp-neu', 'Hypothese hinzufügen', neu));
+}
+const zeilen = (t) => String(t || '').split('\n').map((x) => x.trim()).filter((x) => x);
+
+// ===========================================================================
+// Fragen und Suchprotokoll
+// ===========================================================================
+
+function frageKarte(f) {
+  return el('div', {class: 'karte', id: f.id},
+    el('h3', {}, f.id + ' ', badge(f.status), f.mensch ? marke('Mensch') : null), p(f.text),
+    f.hypothese ? p('Hypothese: ' + f.hypothese, 'muted klein') : null,
+    f.plan ? p('Plan: ' + f.plan, 'muted') : null,
+    f.ergebnis ? p('Ergebnis: ' + f.ergebnis) : null,
+    aufklapp('fr-' + f.id, 'Status setzen', formular([
+      {name: 'status', label: 'Status', typ: 'wahl', optionen: aufzaehlung(S.opt.fragen_status), wert: f.status},
+      {name: 'ergebnis', label: 'Ergebnis', typ: 'area', wert: f.ergebnis}
+    ], {key: 'fr-' + f.id, senden: (v) => {
+      const argv = ['frage', 'status', f.id, v.status];
+      if (v.ergebnis !== f.ergebnis) argv.push(opt('ergebnis', v.ergebnis));
+      return befehl(argv);
+    }})));
+}
+
+function ansichtFragen() {
+  const d = S.fall;
+  const gruppe = (titel, liste) => liste.length ? el('section', {}, el('h3', {text: titel + ' (' + liste.length + ')'}), liste.map(frageKarte)) : null;
+  const normal = d.fragen.filter((f) => !f.mensch);
+  const neu = formular([
+    {name: 'text', label: 'Frage', typ: 'area'},
+    {name: 'hypothese', label: 'Zur Hypothese', typ: 'wahl', optionen: optHyp()},
+    {name: 'plan', label: 'Plan (Vorgehen)', typ: 'area'},
+    {name: 'mensch', label: 'Aufgabe für Menschen (kann nicht automatisch erledigt werden)', typ: 'schalter'}
+  ], {knopf: 'Frage anlegen', senden: (v) => {
+    const argv = ['frage', 'neu', opt('text', v.text)];
+    if (v.hypothese) argv.push(opt('hypothese', v.hypothese));
+    if (v.plan.trim()) argv.push(opt('plan', v.plan));
+    if (v.mensch) argv.push('--mensch');
+    return befehl(argv);
+  }});
+  const suche = formular([
+    {name: 'anfrage', label: 'Suchanfrage'},
+    {name: 'richtung', label: 'Richtung', typ: 'wahl', optionen: aufzaehlung(S.opt.richtungen), wert: 'neutral',
+      hinweis: '„dagegen“ heißt: gesucht wurde nach Widerspruch zur Hypothese.'},
+    {name: 'frage', label: 'Zur Frage', typ: 'wahl', optionen: optFrage()},
+    {name: 'hypothese', label: 'Zur Hypothese', typ: 'wahl', optionen: optHyp()},
+    {name: 'treffer', label: 'Anzahl Treffer', typ: 'zahl'},
+    {name: 'notiz', label: 'Notiz', typ: 'area'}
+  ], {knopf: 'Suche notieren', senden: (v) => {
+    const argv = ['suche', 'notieren', opt('anfrage', v.anfrage), opt('richtung', v.richtung)];
+    if (v.frage) argv.push(opt('frage', v.frage));
+    if (v.hypothese) argv.push(opt('hypothese', v.hypothese));
+    if (v.treffer.trim() !== '') argv.push(opt('treffer', v.treffer.trim()));
+    if (v.notiz.trim()) argv.push(opt('notiz', v.notiz));
+    return befehl(argv);
+  }});
+  return el('div', {}, el('h2', {text: 'Fragen'}),
+    gruppe('Offen', normal.filter((f) => f.status === 'offen')),
+    gruppe('In Arbeit', normal.filter((f) => f.status === 'in_arbeit')),
+    gruppe('Beantwortet', normal.filter((f) => f.status === 'beantwortet')),
+    gruppe('Sackgassen', normal.filter((f) => f.status === 'sackgasse')),
+    d.fragen.length ? null : p('Noch keine Frage.', 'muted'),
+    aufklapp('fr-neu', 'Frage hinzufügen', neu),
+    el('h2', {text: 'Aufgaben für Menschen'}),
+    p('Was nur Menschen erledigen können: Gespräche, Akteneinsicht, Vor-Ort-Recherche.', 'muted'),
+    d.fragen.some((f) => f.mensch) ? d.fragen.filter((f) => f.mensch).map(frageKarte) : p('Keine.', 'muted'),
+    el('h2', {text: 'Suchprotokoll'}),
+    d.suchen.length ? d.suchen.map((s) => el('div', {class: 'karte'},
+      el('div', {}, strong(s.id + ' '), badge(null, lab(s.richtung)), s.treffer === null || s.treffer === undefined ? '' : ' ' + s.treffer + ' Treffer'),
+      p(s.anfrage), s.notiz ? p(s.notiz, 'muted') : null,
+      p([s.frage, s.hypothese].filter((x) => x).join(' · ') + (s.wer ? ' · ' + s.wer : '') + ' · ' + s.zeit, 'muted klein')))
+      : p('Noch keine Suche protokolliert.', 'muted'),
+    aufklapp('suche-neu', 'Suche notieren', suche));
+}
+
+// ===========================================================================
+// Quellen
+// ===========================================================================
+
+function ansichtQuellen() {
+  const d = S.fall;
+  const typen = aufzaehlung(S.opt.quellen_typen);
+  const nachQuelleAnlegen = async (res) => {
+    const m = /(?:angelegt|bereits erfasst): (Q\d+)/.exec(res.aus || '');
+    S.meldung = {art: 'ok', text: text(res)}; S.meldungBleibt = true;
+    await ladeFall();
+    if (m) location.hash = hash('f', S.slug, 'quelle', m[1]); else await render(true);
+  };
+  const perUrl = formular([
+    {name: 'url', label: 'Adresse (http oder https)', platzhalter: 'Adresse der Seite'},
+    {name: 'typ', label: 'Typ', typ: 'wahl', optionen: typen, wert: 'unbekannt'},
+    {name: 'frage', label: 'Zur Frage', typ: 'wahl', optionen: optFrage()}
+  ], {knopf: 'Seite abrufen und sichern', key: 'q-url', erfolg: nachQuelleAnlegen, senden: (v) => {
+    const argv = ['quelle', 'holen', v.url.trim(), opt('typ', v.typ)];
+    if (v.frage) argv.push(opt('frage', v.frage));
+    return befehl(argv);
+  }});
+  const perDatei = formular([
+    {name: 'datei', label: 'Dokument (höchstens 25 MB; PDF, Text, HTML)', typ: 'datei'},
+    {name: 'titel', label: 'Titel'},
+    {name: 'typ', label: 'Typ', typ: 'wahl', optionen: typen, wert: 'unbekannt'}
+  ], {knopf: 'Dokument hochladen', key: 'q-datei', erfolg: nachQuelleAnlegen, senden: async (v) => {
+    if (!v.datei) return {code: 1, aus: '', fehler: 'Keine Datei gewählt.'};
+    const url = '/api/quelle-datei?fall=' + encodeURIComponent(S.slug) + '&titel=' + encodeURIComponent(v.titel)
+      + '&name=' + encodeURIComponent(v.datei.name) + '&typ=' + encodeURIComponent(v.typ) + '&wer=' + encodeURIComponent(S.wer);
+    const r = await holen(url, {method: 'POST', headers: {'Content-Type': 'application/octet-stream'}, body: v.datei});
+    let antwort = null;
+    try { antwort = await r.json(); } catch (e) { /* kein JSON */ }
+    if (antwort && typeof antwort.code === 'number') return antwort;
+    throw new Error((antwort && antwort.fehler) || ('Fehler ' + r.status));
+  }});
+  const perText = formular([
+    {name: 'titel', label: 'Titel'},
+    {name: 'text', label: 'Text einfügen', typ: 'area', zeilen: 8, hinweis: 'Der Text wird unverändert gespeichert; Zitate werden gegen ihn geprüft.'},
+    {name: 'url', label: 'Adresse, falls bekannt (optional)'},
+    {name: 'typ', label: 'Typ', typ: 'wahl', optionen: typen, wert: 'unbekannt'}
+  ], {knopf: 'Text als Quelle speichern', key: 'q-text', erfolg: nachQuelleAnlegen, senden: (v) => {
+    const argv = ['quelle', 'text', opt('titel', v.titel), opt('typ', v.typ)];
+    if (v.url.trim()) argv.push(opt('url', v.url.trim()));
+    return befehl(argv, {eingabe: v.text});
+  }});
+  return el('div', {}, el('h2', {text: 'Quellen'}),
+    d.quellen.length ? d.quellen.map((x) => el('div', {class: 'karte'},
+      el('h3', {}, interner(hash('f', S.slug, 'quelle', x.id), x.id + ' · ' + (x.titel || '(ohne Titel)'))),
+      el('div', {}, marke(lab(x.typ)), marke('Zuverlässigkeit: ' + (ZUVERL[x.zuverlaessigkeit] || x.zuverlaessigkeit))),
+      p([x.herausgeber, x.datum, x.zeichen + ' Zeichen'].filter((t) => t).join(' · '), 'muted klein')))
+      : p('Noch keine Quelle.', 'muted'),
+    el('h2', {text: 'Quelle hinzufügen'}),
+    aufklapp('q-url', 'Per Adresse', perUrl), aufklapp('q-datei', 'Dokument hochladen', perDatei),
+    aufklapp('q-text', 'Text einfügen', perText));
+}
+
+function ansichtQuelle(id) {
+  const x = S.idx.q[id];
+  if (!x) return el('div', {}, el('h2', {text: 'Quelle nicht gefunden'}), interner(hash('f', S.slug, 'quellen'), '‹ Quellen', 'knopf'));
+  if (S.lesen.id !== id) S.lesen = {id: id, ab: 0, suche: ''};
+  S.auswahl = S.auswahl || '';
+  const belege = S.fall.belege.filter((b) => b.quelle === id);
+
+  const felder = el('dl', {class: 'felder'});
+  const zeile = (k, v) => { if (v !== '' && v !== null && v !== undefined) felder.append(el('dt', {text: k}), el('dd', {}, v)); };
+  zeile('Adresse', istHttp(x.url) ? extLink(x.url) : x.url);
+  zeile('Archiv', istHttp(x.archiv_url) ? extLink(x.archiv_url) : x.archiv_url);
+  zeile('Herausgeber', x.herausgeber); zeile('Autor', x.autor); zeile('Datum', x.datum);
+  zeile('Abgerufen', x.abgerufen); zeile('Art', x.art); zeile('Zeichen', String(x.zeichen));
+  zeile('Prüfsumme', (x.sha256 || '').slice(0, 16)); zeile('Ursprung', x.ursprung); zeile('Interesse', x.interesse);
+
+  const aendern = formular([
+    {name: 'titel', label: 'Titel', wert: x.titel},
+    {name: 'typ', label: 'Typ', typ: 'wahl', optionen: aufzaehlung(S.opt.quellen_typen), wert: x.typ},
+    {name: 'zuverlaessigkeit', label: 'Zuverlässigkeit', typ: 'wahl', optionen: [['', '(nicht bewertet)']].concat(S.opt.zuverlaessigkeit.map((z) => [z, ZUVERL[z] || z])),
+      wert: x.zuverlaessigkeit, hinweis: 'A bis C zählen als zuverlässig für „belegt“ und „gestützt“.'},
+    {name: 'ursprung', label: 'Ursprung', wert: x.ursprung, hinweis: 'Quellen-ID (z. B. Q1) oder Text. Quellen mit gleichem Ursprung zählen als eine.'},
+    {name: 'interesse', label: 'Interesse der Quelle', wert: x.interesse},
+    {name: 'herausgeber', label: 'Herausgeber', wert: x.herausgeber},
+    {name: 'autor', label: 'Autor', wert: x.autor},
+    {name: 'datum', label: 'Datum', wert: x.datum, platzhalter: 'JJJJ-MM-TT'}
+  ], {key: 'q-setzen', senden: (v) => {
+    const argv = ['quelle', 'setzen', id];
+    ['titel', 'typ', 'zuverlaessigkeit', 'ursprung', 'interesse', 'herausgeber', 'autor', 'datum'].forEach((n) => {
+      // ein leer gewählter Auswahlwert (typ, zuverlaessigkeit) lässt sich nicht setzen
+      if (v[n] !== x[n] && !((n === 'typ' || n === 'zuverlaessigkeit') && v[n] === '')) argv.push(opt(n, v[n]));
+    });
+    return befehl(argv);
+  }});
+
+  const kopfBelege = belege.length ? belege.map((b) => belegBlock(b.id, null)) : [p('Noch kein Beleg aus dieser Quelle.', 'muted')];
+  const lesen = el('div', {id: 'lesebereich'});
+  const leiste = el('div', {class: 'leiste', role: 'region', 'aria-label': 'Auswahl als Beleg übernehmen'});
+  const dialog = belegDialog(id);
+  aktualisiereLeiste(leiste, dialog);
+  zeigeText(lesen, id, leiste, dialog);
+
+  return el('div', {}, interner(hash('f', S.slug, 'quellen'), '‹ Quellen', 'klein'),
+    el('h2', {text: id + ' · ' + (x.titel || '(ohne Titel)')}),
+    el('div', {}, marke(lab(x.typ)), marke('Zuverlässigkeit: ' + (ZUVERL[x.zuverlaessigkeit] || x.zuverlaessigkeit))),
+    felder, aufklapp('q-setzen', 'Angaben ändern', aendern),
+    el('h3', {text: 'Belege aus dieser Quelle (' + belege.length + ')'}), kopfBelege,
+    el('h3', {text: 'Gespeicherter Text'}),
+    p('Passage mit Finger oder Maus markieren, dann unten „Als Beleg übernehmen“.', 'muted klein'),
+    lesen, leiste, dialog);
+}
+
+// ---- Text lesen: Seiten und Suche über `quelle lesen`
+
+function nimmZeichen(s, start, n) {
+  // Das Werkzeug zählt Unicode-Zeichen (Python), JavaScript zählt UTF-16-Einheiten.
+  let i = start;
+  for (let k = 0; k < n && i < s.length; k++) i += s.codePointAt(i) > 0xFFFF ? 2 : 1;
+  return i;
+}
+function parseSeite(aus) {
+  const kopf = aus.indexOf('\n');
+  const rest = aus.slice(kopf + 2);
+  const m = /\n\n-- Zeichen (\d+) bis (\d+) von (\d+)(?:; weiter mit --ab (\d+))?\n?$/.exec(rest);
+  if (!m) return null;
+  return {text: rest.slice(0, m.index), von: +m[1], bis: +m[2], gesamt: +m[3]};
+}
+function parseSuche(aus) {
+  const treffer = [];
+  let i = aus.indexOf('\n') + 1;
+  const kopf = /\n\[Zeichen (\d+)-(\d+)\]\n/y;
+  for (;;) {
+    kopf.lastIndex = i;
+    const m = kopf.exec(aus);
+    if (!m) break;
+    const start = kopf.lastIndex;
+    const ende = nimmZeichen(aus, start, (+m[2]) - (+m[1]));
+    treffer.push({von: +m[1], bis: +m[2], text: aus.slice(start, ende)});
+    i = ende;
+  }
+  const z = /\n\n(\d+) Treffer/.exec(aus.slice(i));
+  return {treffer: treffer, anzahl: z ? +z[1] : treffer.length};
+}
+
+async function zeigeText(container, id, leiste, dialog) {
+  const L = S.lesen;
+  const suchfeld = el('input', {type: 'search', value: L.suche, 'aria-label': 'Im Text suchen', placeholder: 'Im Text suchen'});
+  const springe = el('input', {type: 'number', inputmode: 'numeric', value: String(L.ab), 'aria-label': 'Zeichenposition', min: '0'});
+  const los = (ab, suche) => { S.lesen = {id: id, ab: Math.max(0, ab), suche: suche}; S.lesetext = null; zeigeText(container, id, leiste, dialog); };
+  const suchform = el('form', {class: 'zeile'}, el('div', {class: 'feld'}, suchfeld), el('button', {type: 'submit', class: 'knopf', text: 'Suchen'}));
+  suchform.addEventListener('submit', (ev) => { ev.preventDefault(); los(0, suchfeld.value.trim()); });
+  const feldBox = el('div', {class: 'lesetext', tabindex: '0', 'aria-label': 'Gespeicherter Text der Quelle'}, 'Lädt …');
+  container.replaceChildren(suchform, feldBox);
+  S.lesetext = feldBox;
+  let res;
+  try {
+    res = await befehl(L.suche ? ['quelle', 'lesen', id, opt('suche', L.suche)] : ['quelle', 'lesen', id, opt('ab', L.ab), opt('laenge', LESEFENSTER)]);
+  } catch (e) { feldBox.textContent = e.message; return; }
+  if (S.lesetext !== feldBox) return;
+  if (res.code !== 0) { feldBox.textContent = (res.fehler || res.aus).trim(); return; }
+  if (L.suche) {
+    const r = parseSuche(res.aus);
+    fuelle(feldBox, [p(r.anzahl + ' Treffer für „' + L.suche + '“' + (r.anzahl > 8 ? ' (gezeigt werden nur die ersten Stellen)' : ''), 'muted'),
+      r.treffer.map((t) => el('div', {class: 'treffer'},
+        el('div', {class: 'klein muted', text: 'Zeichen ' + t.von + ' bis ' + t.bis}),
+        el('div', {text: t.text}),
+        el('button', {type: 'button', class: 'knopf klein', text: 'Dort weiterlesen', onclick: () => los(t.von, '')})))]);
+    container.append(el('div', {class: 'zeile'}, el('button', {type: 'button', class: 'knopf', text: 'Zurück zum Text', onclick: () => los(0, '')})));
+  } else {
+    const s = parseSeite(res.aus);
+    if (!s) { feldBox.textContent = res.aus; return; }
+    feldBox.textContent = s.text;
+    springe.value = String(s.von);
+    const sprung = el('form', {class: 'zeile'}, el('div', {class: 'feld'}, springe),
+      el('button', {type: 'submit', class: 'knopf', text: 'Springen'}));
+    sprung.addEventListener('submit', (ev) => { ev.preventDefault(); los(parseInt(springe.value, 10) || 0, ''); });
+    container.append(el('div', {class: 'zeile'},
+      el('button', {type: 'button', class: 'knopf', disabled: s.von <= 0, text: 'Zurück', onclick: () => los(s.von - LESEFENSTER, '')}),
+      el('span', {class: 'muted klein', text: 'Zeichen ' + s.von + ' bis ' + s.bis + ' von ' + s.gesamt}),
+      el('button', {type: 'button', class: 'knopf', disabled: s.bis >= s.gesamt, text: 'Weiter', onclick: () => los(s.bis, '')})), sprung);
+  }
+}
+
+// ---- Auswahl und Beleg
+
+function aktualisiereLeiste(leiste, dialog) {
+  const hat = !!S.auswahl;
+  leiste.replaceChildren(
+    el('div', {class: 'auswahl' + (hat ? '' : ' muted'), id: 'auswahl-text', text: hat ? '„' + kurz(S.auswahl, 160) + '“' : 'Nichts markiert.'}),
+    el('button', {type: 'button', class: 'knopf primaer', id: 'beleg-knopf', disabled: !hat, text: 'Als Beleg übernehmen',
+      onclick: () => { if (S.auswahl && dialog.showModal) { dialog.showModal(); } }}),
+    el('button', {type: 'button', class: 'knopf', disabled: !hat, text: 'Auswahl verwerfen', onclick: () => {
+      S.auswahl = ''; try { window.getSelection().removeAllRanges(); } catch (e) { /* egal */ } aktualisiereLeiste(leiste, dialog); dialog.replaceChildren(...belegDialogInhalt(dialog)); }}));
+  dialog.replaceChildren(...belegDialogInhalt(dialog));
+}
+
+function belegDialog(quelleId) {
+  const dialog = el('dialog', {'aria-label': 'Beleg anlegen'});
+  dialog.dataset.quelle = quelleId;
+  return dialog;
+}
+function belegDialogInhalt(dialog) {
+  const quelleId = dialog.dataset.quelle;
+  const zitat = S.auswahl;
+  const form = formular([
+    {name: 'zitat', label: 'Zitat (wörtlich aus dem gespeicherten Text)', typ: 'area', zeilen: 5, wert: zitat,
+      hinweis: 'Auslassungen mit […] kennzeichnen. Das Werkzeug prüft, dass das Zitat im Text steht.'},
+    {name: 'aussage', label: 'Aussage: was belegt das Zitat?', typ: 'area'},
+    {name: 'direkt', label: 'Primärbeleg: die Quelle dokumentiert die Tatsache selbst', typ: 'schalter'},
+    {name: 'frage', label: 'Zur Frage', typ: 'wahl', optionen: optFrage()}
+  ], {knopf: 'Beleg speichern', erfolg: async (res) => {
+    S.auswahl = '';
+    dialog.close();
+    await nachErfolg(text(res));
+  }, senden: (v) => {
+    const argv = ['beleg', 'neu', opt('quelle', quelleId), opt('zitat', '-'), opt('aussage', v.aussage)];
+    if (v.direkt) argv.push('--direkt');
+    if (v.frage) argv.push(opt('frage', v.frage));
+    return befehl(argv, {eingabe: v.zitat});
+  }});
+  const zu = el('button', {type: 'button', class: 'knopf', text: 'Abbrechen', onclick: () => dialog.close()});
+  return [el('h3', {text: 'Beleg anlegen'}), form, zu];
+}
+
+document.addEventListener('selectionchange', () => {
+  const box = S.lesetext;
+  if (!box || !box.isConnected) return;
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return;
+  if (!box.contains(sel.getRangeAt(0).commonAncestorContainer)) return;
+  const t = sel.toString().trim();
+  if (!t || t === S.auswahl) return;
+  S.auswahl = t;
+  const leiste = document.querySelector('.leiste');
+  if (!leiste) return;
+  // Nur die Anzeige der Leiste aktualisieren; der Dialog wird beim Öffnen frisch gebaut.
+  const knopf = document.getElementById('beleg-knopf');
+  const anzeige = document.getElementById('auswahl-text');
+  if (knopf) knopf.disabled = false;
+  if (anzeige) { anzeige.textContent = '„' + kurz(t, 160) + '“'; anzeige.classList.remove('muted'); }
+  const dialog = document.querySelector('dialog');
+  if (dialog && !dialog.open) dialog.replaceChildren(...belegDialogInhalt(dialog));
+  document.querySelectorAll('.leiste button:disabled').forEach((b) => { b.disabled = false; });
+});
+
+// ===========================================================================
+// Behauptungen
+// ===========================================================================
+
+function belegBlock(bid, claimId) {
+  const b = S.idx.b[bid];
+  if (!b) return el('div', {class: 'beleg', text: bid + ' (unbekannt)'});
+  const x = S.idx.q[b.quelle];
+  return el('div', {class: 'beleg', id: claimId ? null : b.id},
+    el('div', {}, strong(b.id), b.direkt ? ' · Primärbeleg' : '', ' · Stelle ' + b.stelle),
+    el('blockquote', {text: b.zitat}),
+    b.zitat_ok === false ? el('div', {class: 'warnung', text: 'Achtung: Das Zitat wird im gespeicherten Text der Quelle nicht mehr gefunden.'}) : null,
+    p('Aussage: ' + b.aussage, 'klein'),
+    el('div', {class: 'klein'}, quellenLink(b.quelle),
+      x ? ' · ' + [lab(x.typ), 'Zuverlässigkeit ' + (ZUVERL[x.zuverlaessigkeit] || x.zuverlaessigkeit), x.herausgeber, x.datum].filter((t) => t).join(' · ') : ''),
+    claimId ? el('button', {type: 'button', class: 'knopf klein', text: 'Von ' + claimId + ' lösen',
+      onclick: () => aktion(['behauptung', 'beleg', claimId, opt('ohne', b.id)])}) : null);
+}
+
+function gruppiere(d) {
+  const rang = {}; BEFUND.forEach((s, i) => { rang[s] = i; });
+  const hyp = {}; d.hypothesen.forEach((h) => { hyp[h.id] = h; });
+  const gr = {};
+  d.behauptungen.forEach((c) => { const k = c.hypothese && hyp[c.hypothese] ? c.hypothese : ''; (gr[k] = gr[k] || []).push(c); });
+  const aus = [];
+  d.hypothesen.concat([null]).forEach((h) => {
+    const liste = gr[h ? h.id : ''];
+    if (liste && liste.length) aus.push([h, liste.slice().sort((a, b) => (a.status in rang ? rang[a.status] : 99) - (b.status in rang ? rang[b.status] : 99))]);
+  });
+  return aus;
+}
+
+function behauptungKarte(c) {
+  const d = S.fall;
+  const aus = c.aus.map((id) => (S.idx.a[id] ? id + ' (' + lab(S.idx.a[id].status) + ')' : id)).join(', ');
+  const betrifft = c.betrifft.map((id) => (S.idx.p[id] ? S.idx.p[id].name : id)).join(', ');
+  const zeigeGrenze = c.status === 'ungeprueft' || ({ungeprueft: 1, unbestaetigt: 2, gestuetzt: 3, belegt: 4}[c.status] || 99) < ({ungeprueft: 1, unbestaetigt: 2, gestuetzt: 3, belegt: 4}[c.obergrenze] || 0);
+  const grenze = 'Obergrenze: ' + lab(c.obergrenze) + ' (' + c.obergrenze_grund + ')';
+
+  const bearbeiten = formular([
+    {name: 'text', label: 'Text', typ: 'area', zeilen: 4, wert: c.text},
+    {name: 'art', label: 'Art', typ: 'wahl', optionen: aufzaehlung(S.opt.behauptungs_arten), wert: c.art},
+    {name: 'aus', label: 'Beruht auf (Prämissen; nur Schlussfolgerung und Bewertung)', typ: 'mehrfach', optionen: optBehauptung(c.id), wert: c.aus},
+    {name: 'betrifft', label: 'Betrifft (Akteure)', typ: 'mehrfach', optionen: optAkteur(false), wert: c.betrifft},
+    {name: 'belastend', label: 'belastend (wirft Betroffenen etwas vor)', typ: 'schalter', wert: c.belastend},
+    {name: 'zuschreibung', label: 'Zuschreibung (berichtet nur, was der Autor der Quelle selbst erklärt)', typ: 'schalter', wert: c.zuschreibung},
+    {name: 'klaerung', label: 'Klärung des Widerspruchs', typ: 'area', wert: c.klaerung, hinweis: 'Nötig, wenn Gegenbelege vorliegen und der Status nicht „strittig“ ist.'},
+    {name: 'pro', label: 'Belege dafür hinzufügen', typ: 'mehrfach', optionen: optBeleg(c.pro.concat(c.contra))},
+    {name: 'contra', label: 'Belege dagegen hinzufügen', typ: 'mehrfach', optionen: optBeleg(c.pro.concat(c.contra))}
+  ], {key: 'a-bearb-' + c.id, senden: async (v) => {
+    const argv = ['behauptung', 'setzen', c.id, opt('text', v.text), opt('art', v.art), opt('aus', v.aus.join(',')),
+      opt('betrifft', v.betrifft.join(',')), v.belastend ? '--belastend' : '--nicht-belastend',
+      v.zuschreibung ? '--zuschreibung' : '--keine-zuschreibung', opt('klaerung', v.klaerung)];
+    const r1 = await befehl(argv);
+    if (r1.code !== 0 || (!v.pro.length && !v.contra.length)) return r1;
+    const argv2 = ['behauptung', 'beleg', c.id];
+    if (v.pro.length) argv2.push(opt('pro', v.pro.join(',')));
+    if (v.contra.length) argv2.push(opt('contra', v.contra.join(',')));
+    const r2 = await befehl(argv2);
+    return {code: r2.code, aus: (r1.aus + r2.aus), fehler: r2.fehler};
+  }});
+
+  const pruefen = el('div', {},
+    el('div', {class: 'warnung', text: grenze}),
+    formular([
+      {name: 'status', label: 'Status', typ: 'wahl', optionen: aufzaehlung(S.opt.pruefbare_status), wert: S.opt.pruefbare_status.indexOf(c.status) >= 0 ? c.status : 'unbestaetigt'},
+      {name: 'vermerk', label: 'Vermerk (Begründung der Prüfung)', typ: 'area'},
+      {name: 'pruefer', label: 'Prüfer', wert: c.pruefer || S.wer, hinweis: 'Geprüft werden soll unabhängig von der Sammlung.'}
+    ], {key: 'a-pruef-' + c.id, senden: (v) => befehl(['behauptung', 'pruefen', c.id, opt('status', v.status), opt('vermerk', v.vermerk), opt('pruefer', v.pruefer)])}));
+
+  return el('div', {class: 'karte', id: c.id},
+    el('h4', {}, c.id + ' ', badge(c.status, lab(c.status) + (c.zuschreibung ? ' (Zuschreibung)' : '')), marke(lab(c.art)),
+      c.belastend ? marke('belastend') : null, c.zuschreibung ? marke('Zuschreibung') : null),
+    p(c.text),
+    zeigeGrenze ? el('div', {class: 'warnung', text: grenze}) : null,
+    c.geprueft ? p('Prüfung: ' + c.geprueft + ' von ' + c.pruefer + (c.vermerk ? ' · ' + c.vermerk : ''), 'muted klein') : null,
+    c.klaerung ? p('Klärung: ' + c.klaerung, 'klein') : null,
+    aus ? p('Beruht auf: ' + aus, 'klein') : null,
+    betrifft ? p('Betrifft: ' + betrifft, 'klein') : null,
+    c.pro.length ? el('div', {}, strong('Belege dafür'), c.pro.map((b) => belegBlock(b, c.id))) : null,
+    c.contra.length ? el('div', {}, strong('Belege dagegen'), c.contra.map((b) => belegBlock(b, c.id))) : null,
+    !c.pro.length && !c.contra.length && c.art !== 'bewertung' && c.art !== 'schlussfolgerung' ? p('Keine Belege.', 'muted klein') : null,
+    aufklapp('a-pruef-' + c.id, 'Prüfen (Status setzen)', pruefen),
+    aufklapp('a-bearb-' + c.id, 'Bearbeiten, Belege hinzufügen', bearbeiten));
+}
+
+function ansichtBehauptungen() {
+  const d = S.fall;
+  const neu = formular([
+    {name: 'text', label: 'Behauptung', typ: 'area', zeilen: 4},
+    {name: 'art', label: 'Art', typ: 'wahl', optionen: aufzaehlung(S.opt.behauptungs_arten), wert: 'tatsache',
+      hinweis: 'Tatsache und Verdacht brauchen Belege. Schlussfolgerung und Bewertung beruhen auf anderen Behauptungen.'},
+    {name: 'hypothese', label: 'Zur Hypothese', typ: 'wahl', optionen: optHyp()},
+    {name: 'pro', label: 'Belege dafür', typ: 'mehrfach', optionen: optBeleg()},
+    {name: 'contra', label: 'Belege dagegen', typ: 'mehrfach', optionen: optBeleg()},
+    {name: 'aus', label: 'Beruht auf (Prämissen)', typ: 'mehrfach', optionen: optBehauptung()},
+    {name: 'betrifft', label: 'Betrifft (Akteure)', typ: 'mehrfach', optionen: optAkteur(false)},
+    {name: 'belastend', label: 'belastend (wirft Betroffenen etwas vor)', typ: 'schalter'},
+    {name: 'zuschreibung', label: 'Zuschreibung (berichtet nur, was der Autor der Quelle selbst erklärt)', typ: 'schalter'}
+  ], {knopf: 'Behauptung anlegen', key: 'a-neu', senden: (v) => {
+    const argv = ['behauptung', 'neu', opt('text', v.text), opt('art', v.art)];
+    if (v.hypothese) argv.push(opt('hypothese', v.hypothese));
+    [['pro', v.pro], ['contra', v.contra], ['aus', v.aus], ['betrifft', v.betrifft]].forEach((e) => { if (e[1].length) argv.push(opt(e[0], e[1].join(','))); });
+    if (v.belastend) argv.push('--belastend');
+    if (v.zuschreibung) argv.push('--zuschreibung');
+    return befehl(argv);
+  }});
+  const gruppen = gruppiere(d).map((g) => el('section', {},
+    el('h3', {}, g[0] ? [g[0].id + ' · ' + kurz(g[0].text, 90) + ' ', badge(g[0].status)] : 'Ohne Hypothese'),
+    g[1].map(behauptungKarte)));
+  const lose = d.belege.filter((b) => !d.behauptungen.some((c) => c.pro.indexOf(b.id) >= 0 || c.contra.indexOf(b.id) >= 0));
+  return el('div', {}, el('h2', {text: 'Behauptungen'}),
+    gruppen.length ? gruppen : p('Noch keine Behauptung.', 'muted'),
+    aufklapp('a-neu', 'Behauptung hinzufügen', neu),
+    lose.length ? el('section', {}, el('h3', {text: 'Belege ohne Behauptung (' + lose.length + ')'}), lose.map((b) => belegBlock(b.id, null))) : null);
+}
+
+// ===========================================================================
+// Akteure, Beziehungen, Chronologie
+// ===========================================================================
+
+function ansichtAkteure() {
+  const d = S.fall;
+  const name = (id) => (S.idx.p[id] ? S.idx.p[id].name : id);
+  const kennText = (k) => Object.keys(k || {}).map((s) => s + '=' + k[s]).join('\n');
+  const kennArgs = (argv, t) => zeilen(t).forEach((z) => argv.push(opt('kennung', z)));
+  const neu = formular([
+    {name: 'art', label: 'Art', typ: 'wahl', optionen: aufzaehlung(['person', 'organisation']), wert: 'person'},
+    {name: 'name', label: 'Name'},
+    {name: 'kategorie', label: 'Kategorie', typ: 'wahl', optionen: aufzaehlung(S.opt.kategorien, true), hinweis: 'Bei Privatpersonen gelten die Schutzregeln der Akte.'},
+    {name: 'kennungen', label: 'Kennungen (eine je Zeile als Schlüssel=Wert)', typ: 'area', platzhalter: 'geburtsjahr=1970'},
+    {name: 'notiz', label: 'Notiz', typ: 'area'},
+    {name: 'belege', label: 'Belege', typ: 'mehrfach', optionen: optBeleg()},
+    {name: 'trotzdem', label: 'Auch anlegen, wenn der Name schon vorkommt (andere Person)', typ: 'schalter'}
+  ], {knopf: 'Akteur anlegen', key: 'p-neu', senden: (v) => {
+    const argv = ['akteur', 'neu', opt('art', v.art), opt('name', v.name)];
+    if (v.kategorie) argv.push(opt('kategorie', v.kategorie));
+    kennArgs(argv, v.kennungen);
+    if (v.notiz.trim()) argv.push(opt('notiz', v.notiz));
+    if (v.belege.length) argv.push(opt('beleg', v.belege.join(',')));
+    if (v.trotzdem) argv.push('--trotzdem');
+    return befehl(argv);
+  }});
+  const karten = d.akteure.map((a) => el('div', {class: 'karte', id: a.id},
+    el('h3', {}, a.id + ' · ' + a.name), el('div', {}, marke(lab(a.art)), marke(lab(a.kategorie))),
+    Object.keys(a.kennungen || {}).length ? p(Object.keys(a.kennungen).map((k) => k + ': ' + a.kennungen[k]).join(' · '), 'klein') : null,
+    a.notiz ? p(a.notiz) : null,
+    a.belege.length ? el('div', {class: 'klein'}, 'Belege: ', a.belege.map((b, i) => [i ? ', ' : '', b])) : null,
+    aufklapp('p-bearb-' + a.id, 'Bearbeiten', formular([
+      {name: 'kategorie', label: 'Kategorie', typ: 'wahl', optionen: aufzaehlung(S.opt.kategorien), wert: a.kategorie},
+      {name: 'kennungen', label: 'Kennungen (Schlüssel=Wert je Zeile; vorhandene werden ergänzt oder überschrieben)', typ: 'area', wert: kennText(a.kennungen)},
+      {name: 'notiz', label: 'Notiz', typ: 'area', wert: a.notiz},
+      {name: 'belege', label: 'Belege hinzufügen', typ: 'mehrfach', optionen: optBeleg(a.belege)}
+    ], {key: 'p-bearb-' + a.id, senden: (v) => {
+      const argv = ['akteur', 'setzen', a.id, opt('kategorie', v.kategorie), opt('notiz', v.notiz)];
+      kennArgs(argv, v.kennungen);
+      if (v.belege.length) argv.push(opt('beleg', v.belege.join(',')));
+      return befehl(argv);
+    }}))));
+
+  const beziehungen = d.beziehungen.map((r) => el('div', {class: 'karte', id: r.id},
+    strong(r.id + ' '), name(r.von) + ' — ' + r.art + ' → ' + name(r.zu),
+    (r.von_datum || r.bis_datum) ? p((r.von_datum || '?') + ' bis ' + (r.bis_datum || 'heute/offen'), 'muted klein') : null,
+    p('Belege: ' + (r.belege.join(', ') || '-'), 'muted klein')));
+  const beziehungNeu = formular([
+    {name: 'von', label: 'Von', typ: 'wahl', optionen: optAkteur(true)},
+    {name: 'zu', label: 'Zu', typ: 'wahl', optionen: optAkteur(true)},
+    {name: 'art', label: 'Art der Beziehung', platzhalter: 'z. B. Geschäftsführer von'},
+    {name: 'von_datum', label: 'Seit', platzhalter: 'JJJJ-MM-TT'},
+    {name: 'bis_datum', label: 'Bis', platzhalter: 'JJJJ-MM-TT'},
+    {name: 'belege', label: 'Belege (mindestens einer)', typ: 'mehrfach', optionen: optBeleg()}
+  ], {knopf: 'Beziehung anlegen', key: 'r-neu', senden: (v) => {
+    const argv = ['beziehung', 'neu', opt('von', v.von), opt('zu', v.zu), opt('art', v.art), opt('beleg', v.belege.join(','))];
+    if (v.von_datum.trim()) argv.push(opt('von-datum', v.von_datum.trim()));
+    if (v.bis_datum.trim()) argv.push(opt('bis-datum', v.bis_datum.trim()));
+    return befehl(argv);
+  }});
+
+  const ereignisse = d.ereignisse.slice().sort((a, b) => (a.datum === '') - (b.datum === '') || (a.datum < b.datum ? -1 : a.datum > b.datum ? 1 : 0));
+  const ereignisNeu = formular([
+    {name: 'datum', label: 'Datum', platzhalter: 'JJJJ-MM-TT', hinweis: 'Auch JJJJ-MM oder nur JJJJ.'},
+    {name: 'text', label: 'Was geschah?', typ: 'area'},
+    {name: 'belege', label: 'Belege (mindestens einer)', typ: 'mehrfach', optionen: optBeleg()},
+    {name: 'akteure', label: 'Beteiligte Akteure', typ: 'mehrfach', optionen: optAkteur(false)}
+  ], {knopf: 'Ereignis anlegen', key: 'e-neu', senden: (v) => {
+    const argv = ['ereignis', 'neu', opt('datum', v.datum.trim()), opt('text', v.text), opt('beleg', v.belege.join(','))];
+    if (v.akteure.length) argv.push(opt('akteur', v.akteure.join(',')));
+    return befehl(argv);
+  }});
+
+  return el('div', {}, el('h2', {text: 'Akteure'}),
+    karten.length ? karten : p('Noch kein Akteur.', 'muted'), aufklapp('p-neu', 'Akteur hinzufügen', neu),
+    el('h2', {text: 'Beziehungen'}), beziehungen.length ? beziehungen : p('Noch keine Beziehung.', 'muted'),
+    aufklapp('r-neu', 'Beziehung hinzufügen', beziehungNeu),
+    el('h2', {text: 'Chronologie'}),
+    ereignisse.length ? ereignisse.map((e) => el('div', {class: 'karte', id: e.id},
+      strong((e.datum || 'ohne Datum') + ' '), e.text,
+      p([e.id, e.akteure.length ? 'Akteure: ' + e.akteure.map(name).join(', ') : '', 'Belege: ' + e.belege.join(', ')].filter((t) => t).join(' · '), 'muted klein')))
+      : p('Noch kein Ereignis.', 'muted'),
+    aufklapp('e-neu', 'Ereignis hinzufügen', ereignisNeu));
+}
+
+// ===========================================================================
+// Konfrontation
+// ===========================================================================
+
+function ansichtKonfrontation() {
+  const d = S.fall;
+  const name = (id) => (S.idx.p[id] ? S.idx.p[id].name : id);
+  const neu = formular([
+    {name: 'akteur', label: 'Wer soll Stellung nehmen?', typ: 'wahl', optionen: optAkteur(true)},
+    {name: 'frage', label: 'Frage an die betroffene Person oder Organisation', typ: 'area', zeilen: 4},
+    {name: 'zu', label: 'Bezieht sich auf Behauptungen', typ: 'mehrfach', optionen: optBehauptung()}
+  ], {knopf: 'Frage anlegen', key: 'k-neu', senden: (v) => {
+    const argv = ['konfrontation', 'neu', opt('akteur', v.akteur), opt('frage', v.frage)];
+    if (v.zu.length) argv.push(opt('zu', v.zu.join(',')));
+    return befehl(argv);
+  }});
+  const karte = (k) => {
+    const aktionen = [];
+    if (k.status === 'entwurf' || k.status === 'gesendet') {
+      aktionen.push(aufklapp('k-send-' + k.id, k.status === 'entwurf' ? 'Als gesendet markieren' : 'Sendedatum ändern', formular([
+        {name: 'am', label: 'Gesendet am', wert: k.gesendet_am || heute(), platzhalter: 'JJJJ-MM-TT'},
+        {name: 'frist', label: 'Frist für die Antwort', wert: k.frist, platzhalter: 'JJJJ-MM-TT'}
+      ], {key: 'k-send-' + k.id, senden: (v) => {
+        const argv = ['konfrontation', 'status', k.id, 'gesendet', opt('am', v.am.trim())];
+        if (v.frist.trim()) argv.push(opt('frist', v.frist.trim()));
+        return befehl(argv);
+      }})));
+    }
+    if (k.status === 'gesendet') {
+      aktionen.push(aufklapp('k-antw-' + k.id, 'Antwort festhalten', formular([
+        {name: 'text', label: 'Antwort (Wortlaut)', typ: 'area', zeilen: 5},
+        {name: 'quelle', label: 'Quelle der Antwort (z. B. gespeicherte E-Mail)', typ: 'wahl', optionen: optQuelle()}
+      ], {key: 'k-antw-' + k.id, senden: (v) => {
+        const argv = ['konfrontation', 'antwort', k.id, opt('text', v.text)];
+        if (v.quelle) argv.push(opt('quelle', v.quelle));
+        return befehl(argv);
+      }})));
+      aktionen.push(aufklapp('k-keine-' + k.id, 'Keine Antwort erhalten', formular([
+        {name: 'vermerk', label: 'Vermerk (z. B. Frist verstrichen, Nachfrage am …)', typ: 'area'}
+      ], {key: 'k-keine-' + k.id, senden: (v) => befehl(['konfrontation', 'keine-antwort', k.id, opt('vermerk', v.vermerk)])})));
+    }
+    return el('div', {class: 'karte', id: k.id},
+      el('h4', {}, k.id + ' ', badge(k.status)), p(k.frage),
+      k.zu.length ? p('Zu: ' + k.zu.join(', '), 'muted klein') : null,
+      k.gesendet_am ? p('Gesendet am ' + k.gesendet_am + (k.frist ? ', Frist ' + k.frist : ''), 'klein') : null,
+      k.antwort ? el('div', {}, strong('Antwort'), el('blockquote', {text: k.antwort}), k.antwort_quelle ? p('Quelle: ' + k.antwort_quelle, 'klein muted') : null) : null,
+      k.vermerk ? p('Vermerk: ' + k.vermerk, 'klein') : null, aktionen);
+  };
+  const nachAkteur = [];
+  d.konfrontationen.forEach((k) => {
+    let g = nachAkteur.find((x) => x[0] === k.akteur);
+    if (!g) { g = [k.akteur, []]; nachAkteur.push(g); }
+    g[1].push(k);
+  });
+  return el('div', {}, el('h2', {text: 'Konfrontation'}),
+    p('Wer belastet wird, bekommt vor der Veröffentlichung Gelegenheit zur Stellungnahme.', 'muted'),
+    nachAkteur.length ? nachAkteur.map((g) => el('section', {}, el('h3', {text: name(g[0]) + ' (' + g[0] + ')'}), g[1].map(karte)))
+      : p('Noch keine Konfrontation.', 'muted'),
+    aufklapp('k-neu', 'Frage hinzufügen', neu));
+}
+
+// ===========================================================================
+// Dossier
+// ===========================================================================
+
+function ansichtDossier() {
+  return el('div', {}, el('h2', {text: 'Dossier'}),
+    el('div', {class: 'zeile'}, sichernKnopf(), dossierKnopf()),
+    el('iframe', {class: 'dossier', title: 'Dossier', sandbox: 'allow-popups allow-popups-to-escape-sandbox',
+      src: '/api/dossier?eingebettet=1&fall=' + encodeURIComponent(S.slug)}));
+}
+
+// ===========================================================================
+// Start
+// ===========================================================================
+
+window.addEventListener('hashchange', () => {
+  if (!S.meldungBleibt) S.meldung = null;
+  S.meldungBleibt = false;
+  render(false);
+});
+// Die Android-Hülle ruft das nach einem nativen Import.
+window.recherche = {
+  neuLaden: async () => {
+    try { await ladeFaelle(); } catch (e) { /* render zeigt den Fehler */ }
+    if (route().typ === 'fall') S.fall = null;
+    await render(true);
+  }
+};
+render(false);
+})();
+</script>
+</body>
+</html>

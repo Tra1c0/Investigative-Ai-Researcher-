@@ -2,6 +2,13 @@
 
 Modulübergreifende Entscheidungen und Sackgassen, neueste oben. Format siehe `.claude/rules/karte-format.md`.
 
+## E-009 · 2026-11-16 · Die Android-App ist die Fallakte mit Oberfläche, ohne Agenten
+
+Kontext: Die App soll als APK laufen. Ein eigenes Programm kann das Claude-Abo nicht nutzen: Anthropic erlaubt Drittentwicklern nicht, den Login von claude.ai oder dessen Kontingente für eigene Produkte anzubieten, und verweist auf API-Schlüssel ([Doku](https://code.claude.com/docs/en/agent-sdk/overview), abgerufen 2026-11-16). Agenten in der APK würden jede Recherche über die API zusätzlich kosten. Die Prüfregeln stecken im Python-Paket; eine zweite Fassung in Kotlin oder JavaScript müsste dauerhaft gleich gehalten werden.
+Entscheidung: Die APK bettet das Python-Paket unverändert ein (Chaquopy) und zeigt dessen lokale Web-Oberfläche in einem WebView. Dieselbe Oberfläche läuft am Rechner mit `python3 -m recherche web`. Die Agentenrollen bleiben in Claude Code; Akten wandern als Zip zwischen Sitzung und Telefon (`fall sichern`, `fall laden`). Gebaut wird auf GitHub Actions, weil Googles Android-Server aus der Entwicklungsumgebung nicht erreichbar sind.
+Verworfen: Eine Neufassung der Fallakte für Android, weil dann zwei Fassungen derselben Regeln auseinanderlaufen können. Agenten in der APK über einen API-Schlüssel, solange das nicht ausdrücklich gewünscht ist.
+Erneut prüfen, wenn: ein API-Schlüssel eingesetzt werden soll. Dann kann die App die Rollen selbst ausführen; die Fallakte bleibt dieselbe.
+
 ## E-008 · 2026-11-16 · Recherchiert werden öffentliche Rollen; Privatpersonen sind geschützt
 
 Kontext: Der Pressekodex verlangt die Abwägung zwischen Informationsinteresse und Persönlichkeitsschutz (Ziffer 8) und die Unschuldsvermutung (Ziffer 13). Bellingcat hält in seinen Standards fest, dass Recherchierende nicht über das Nötige hinausgehen und Privates nur bei gerechtfertigtem öffentlichem Interesse veröffentlichen; ein Fall, in dem ein Unbeteiligter nach Fehlern von Online-Rechercheuren öffentlich bloßgestellt wurde, ist dokumentiert. Das Handelsregister hat keine Schnittstelle und beschränkt den automatisierten Abruf (§ 52 HRV), archive.today lässt keine Automatisierung zu. Alles nur über Suchtreffer geprüft, die Primärquellen waren aus der Sitzung nicht erreichbar.

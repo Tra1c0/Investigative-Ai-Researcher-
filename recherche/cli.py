@@ -882,6 +882,23 @@ def dossier(args):
         _zeigen("geschrieben: %s" % pfad)
 
 
+def web(args):
+    from . import web as oberflaeche  # erst hier: web importiert seinerseits cli
+    try:
+        server = oberflaeche.Server(args.port)
+    except OSError as fehler:
+        raise Fehler("Server nicht startbar (Port %d): %s" % (args.port, fehler))
+    print("oberfläche: " + server.url, flush=True)
+    print("Fälle: %s | beenden mit Strg+C" % faelle_wurzel(), flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.stoppe()
+    return 0
+
+
 def _dossier_modul():
     name = (__package__ or "recherche") + ".dossier"
     try:
@@ -1149,6 +1166,8 @@ def baue_parser():
     p = _aktion(bereiche, "dossier", dossier, "Dossier als Markdown/HTML erzeugen")
     p.add_argument("--format", choices=("md", "html", "beide"), default="beide")
     p.add_argument("--ziel")
+    p = _aktion(bereiche, "web", web, "Weboberfläche für die Fallakte starten (nur 127.0.0.1)")
+    p.add_argument("--port", type=int, default=0, help="Port; 0 wählt einen freien")
     return parser
 
 

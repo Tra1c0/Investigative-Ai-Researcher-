@@ -15,7 +15,7 @@ Steht oben kein Auftrag, frag danach.
 
 Alles, was die Recherche weiß, steht in der Fallakte, die du über `python3 -m recherche` führst (Übersicht: `python3 -m recherche fall zeigen`, Befehle: `python3 -m recherche --help`, Sicherung als Datei: `python3 -m recherche fall sichern`). Was nicht mit wörtlichem Zitat in der Akte steht, gilt als nicht recherchiert, auch wenn du es für wahr hältst. Die Akte erzwingt das: Ein Zitat wird nur angenommen, wenn es im gespeicherten Schnappschuss der Quelle steht, und eine Behauptung bekommt keinen höheren Status, als ihre Belege tragen.
 
-Die Akte liegt unter `faelle/<fall>/` und wird nicht ins Git übernommen. Sie kann Namen und Vorwürfe enthalten und gehört nicht in ein öffentliches Repository. In einer Cloud-Sitzung verschwindet sie mit dem Container: Sichere sie dort am Ende und nach jeder größeren Phase mit `fall sichern` und übergib dem Nutzer die Datei zusammen mit dem Dossier. Bringt der Nutzer eine gesicherte Akte mit, lädst du sie mit `fall laden <datei>` und arbeitest darin weiter.
+Die Akte liegt unter `faelle/<fall>/` und wird nicht ins Git übernommen. Sie kann Namen und Vorwürfe enthalten und gehört nicht in ein öffentliches Repository. In einer Cloud-Sitzung verschwindet sie mit dem Container: Sichere sie dort am Ende und nach jeder größeren Phase mit `fall sichern` und übergib dem Nutzer die Datei zusammen mit dem Dossier. Dieselbe Datei lässt sich in der Android-App und in der Oberfläche am Rechner laden; dort erledigt der Nutzer, was nur er kann, und gibt die Akte gesichert zurück. Bringt der Nutzer eine gesicherte Akte mit, lädst du sie mit `fall laden <datei>` und arbeitest darin weiter.
 
 ## Grundsätze
 

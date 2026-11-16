@@ -39,6 +39,17 @@ python3 -m recherche --help               alle Befehle
 
 In einer Cloud-Sitzung verschwindet die Akte mit dem Container. Wer eine Recherche über mehrere Sitzungen führt, sichert sie am Ende und lädt sie beim nächsten Mal wieder.
 
+## Oberfläche und Android-App
+
+Die Fallakte hat eine Oberfläche, die ohne Claude auskommt. Sie zeigt Fälle, die die Rollen erarbeitet haben, und erlaubt, eine Recherche von Hand zu führen: Quellen sichern, Textstellen als Beleg übernehmen, Behauptungen prüfen, Stellungnahmen nachhalten. Es gelten dieselben Regeln wie für die Rollen.
+
+- **Am Rechner:** `python3 -m recherche web` gibt eine Adresse aus, die du im Browser öffnest. Der Server lauscht nur auf dem eigenen Rechner und verlangt das Token aus der Adresse.
+- **Auf Android:** Die App „Recherche“ enthält dieselbe Oberfläche samt Python-Paket. Die aktuelle Vorabversion liegt unter [Releases](https://github.com/Tra1c0/Investigative-Ai-Researcher-/releases/tag/apk-vorab). Zum Installieren die APK öffnen und dem Browser oder Dateimanager die Installation erlauben.
+
+In der App steckt keine KI. Ein eigenes Programm kann das Claude-Abo nicht nutzen, die Rollen laufen deshalb weiter in Claude Code (E-009). Zwischen beiden wandert die Akte als Datei: In der Sitzung `fall sichern`, die Zip-Datei aufs Telefon, in der App „Akte laden“. Zurück geht es mit „Akte sichern“ in der App und `fall laden` in der Sitzung.
+
+Die App speichert Akten nur im eigenen Speicherbereich, schließt sie von der Cloud-Sicherung des Systems aus und geht nur ins Netz, wenn du eine Quelle abrufen lässt.
+
 ## Voraussetzungen
 
 - Claude Code und Python ab 3.9. Für PDFs `pdftotext` oder `pypdf`, sonst nichts.

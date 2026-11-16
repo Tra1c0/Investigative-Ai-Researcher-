@@ -2,15 +2,17 @@
 
 Eine App für investigative Recherche: Sie führt eine Fallakte, in der jede Aussage an ein wörtliches Zitat aus einer gesicherten Quelle gebunden ist, und arbeitet mit Rollen wie ein Rechercheteam.
 
-Stand 2026-11-16: Kern (Fallakte, Belegprüfung, Dossier), Methode und Rollen stehen. Es fehlen Anbindungen an Register und Datenbanken und eine eigene Oberfläche.
+Stand 2026-11-16: Kern (Fallakte, Belegprüfung, Dossier), Methode, Rollen, Oberfläche und Android-App stehen. Es fehlen Anbindungen an Register und Datenbanken. Die Android-App ist im Emulator gestartet, aber auf keinem Gerät geprüft.
 
 ## Die App
 
 - `recherche/` ist ein Python-Paket ohne Abhängigkeiten außer der Standardbibliothek. Alle Befehle: `python3 -m recherche --help`.
+- Die Oberfläche (`python3 -m recherche web`) ist eine einzelne Seite, `recherche/web_ui.html`, vor einem lokalen Server, `recherche/web.py`. Sie führt dieselben Befehle aus wie die Kommandozeile; eine Regel, die nur in der Oberfläche gilt oder dort fehlt, darf es nicht geben.
+- Die Android-App unter `android/` verpackt dasselbe Paket mit Chaquopy und zeigt die Oberfläche in einer WebView. Sie enthält keine KI (E-009). Gebaut und im Emulator gestartet wird nur in GitHub Actions (`.github/workflows/apk.yml`); hier in der Entwicklungsumgebung fehlt das Android-SDK.
 - Die Methode steht im Skill `/recherche <Thema>` (`.claude/skills/recherche/SKILL.md`). Die Rollen sind Subagenten: `rechercheur` (Sonnet) sammelt, `dokumentar` (Opus) prüft unabhängig, `advocatus` (Opus) sucht dagegen, `justiziar` (Opus) macht die rechtliche Vorprüfung.
 - Fallakten liegen unter `faelle/` und kommen nicht ins Git. Das Repository ist öffentlich, und eine Akte kann Namen und Vorwürfe enthalten.
 - Tests: `python3 -m unittest discover -s tests`. Kein Test greift auf das Internet zu.
-- Warum die App so gebaut ist, steht in `docs/karte/ENTSCHEIDUNGEN.md` (E-006 bis E-008). Die Regeln dort zu Belegen und zum Schutz von Privatpersonen sind keine Stilfragen: Wer sie lockert, macht aus dem Werkzeug ein anderes.
+- Warum die App so gebaut ist, steht in `docs/karte/ENTSCHEIDUNGEN.md` (E-006 bis E-009). Die Regeln dort zu Belegen und zum Schutz von Privatpersonen sind keine Stilfragen: Wer sie lockert, macht aus dem Werkzeug ein anderes.
 
 ## Projektkarte
 

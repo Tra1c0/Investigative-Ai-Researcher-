@@ -1,7 +1,11 @@
 """Tests für recherche.quellen: Normalisierung, Zitatprüfung, Abruf, Textgewinnung."""
 
+import importlib.util
+import logging
 import os
+import shutil
 import sys
+import tempfile
 import time
 import unittest
 from unittest import mock
@@ -323,6 +327,96 @@ class AbrufTest(FallTest):
             self.assertEqual(quellen.archiv_suchen("https://example.org/x"),
                              "http://web.archive.org/web/20260101000000/https://example.org/x")
         self.assertIn("archive.org/wayback/available?url=https%3A%2F%2Fexample.org%2Fx", lade.call_args[0][0])
+
+
+def mini_pdf(seiten):
+    """Ein kleines PDF ohne fremde Bibliothek: je Seite eine Liste von Zeilen (WinAnsi)."""
+    objekte = []
+
+    def obj(inhalt):
+        objekte.append(inhalt)
+        return len(objekte)
+
+    schrift = obj(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
+    inhalte = []
+    for zeilen in seiten:
+        teile = [b"BT /F1 12 Tf 72 720 Td 14 TL"]
+        for zeile in zeilen:
+            roh = zeile.encode("cp1252").replace(b"\\", b"\\\\").replace(b"(", b"\\(").replace(b")", b"\\)")
+            teile.append(b"(" + roh + b") Tj T*")
+        teile.append(b"ET")
+        strom = b"\n".join(teile)
+        inhalte.append(obj(b"<< /Length %d >>\nstream\n" % len(strom) + strom + b"\nendstream"))
+    baum = len(objekte) + len(seiten) + 1
+    kinder = [obj(b"<< /Type /Page /Parent %d 0 R /MediaBox [0 0 595 842] /Contents %d 0 R "
+                  b"/Resources << /Font << /F1 %d 0 R >> >> >>" % (baum, inhalt, schrift)) for inhalt in inhalte]
+    obj(b"<< /Type /Pages /Kids [" + b" ".join(b"%d 0 R" % k for k in kinder) + b"] /Count %d >>" % len(kinder))
+    katalog = obj(b"<< /Type /Catalog /Pages %d 0 R >>" % baum)
+    aus = bytearray(b"%PDF-1.4\n")
+    versatz = []
+    for nummer, inhalt in enumerate(objekte, 1):
+        versatz.append(len(aus))
+        aus += b"%d 0 obj\n" % nummer + inhalt + b"\nendobj\n"
+    tabelle = len(aus)
+    aus += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objekte) + 1)
+    for stelle in versatz:
+        aus += b"%010d 00000 n \n" % stelle
+    aus += b"trailer\n<< /Size %d /Root %d 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objekte) + 1, katalog, tabelle)
+    return bytes(aus)
+
+
+PDF_SEITEN = [["Der Beirat tagte am 3. März 2024 in Köln.", "Den Vorsitz führte die Staatssekretärin."],
+              ["Die Förderung beträgt 1,2 Millionen Euro (netto)."]]
+HAT_PYPDF = importlib.util.find_spec("pypdf") is not None
+HAT_PDFTOTEXT = shutil.which("pdftotext") is not None
+
+
+class PdfTest(FallTest):
+    """PDF-Text über beide Wege. In der Android-App gibt es nur pypdf."""
+
+    def pruefe_text(self, text):
+        self.assertIn("Der Beirat tagte am 3. März 2024 in Köln.", text)
+        self.assertIn("Den Vorsitz führte die Staatssekretärin.", text)
+        self.assertIn("Die Förderung beträgt 1,2 Millionen Euro (netto).", text)
+        self.assertLess(text.index("Staatssekretärin"), text.index("Förderung"))
+
+    @unittest.skipUnless(HAT_PYPDF, "pypdf ist nicht installiert")
+    def test_text_ueber_pypdf(self):
+        with mock.patch.object(quellen.shutil, "which", return_value=None):
+            self.pruefe_text(quellen.extrahiere_pdf(mini_pdf(PDF_SEITEN)))
+
+    @unittest.skipUnless(HAT_PDFTOTEXT, "pdftotext ist nicht installiert")
+    def test_text_ueber_pdftotext(self):
+        self.pruefe_text(quellen.extrahiere_pdf(mini_pdf(PDF_SEITEN)))
+
+    def test_ohne_werkzeug_bleibt_der_text_leer(self):
+        with mock.patch.object(quellen.shutil, "which", return_value=None), \
+                mock.patch.dict(sys.modules, {"pypdf": None}):
+            self.assertEqual(quellen.extrahiere_pdf(mini_pdf(PDF_SEITEN)), "")
+
+    def test_kaputtes_pdf_bricht_nicht_ab(self):
+        logging.disable(logging.CRITICAL)  # pypdf meldet das kaputte Dokument als Warnung
+        self.addCleanup(logging.disable, logging.NOTSET)
+        self.assertEqual(quellen.extrahiere_pdf(b"%PDF-1.4\nkein gueltiges Dokument"), "")
+
+    @unittest.skipUnless(HAT_PYPDF, "pypdf ist nicht installiert")
+    def test_pdf_als_quelle_und_beleg_ohne_pdftotext(self):
+        self.neuer_fall()
+        with tempfile.TemporaryDirectory() as ordner:
+            pfad = os.path.join(ordner, "protokoll.pdf")
+            with open(pfad, "wb") as datei:
+                datei.write(mini_pdf(PDF_SEITEN))
+            leer = os.path.join(ordner, "leer")
+            os.mkdir(leer)
+            env = dict(self.env, PATH=leer)
+            qid = self.neue_id("quelle", "datei", pfad, "--titel", "Protokoll", env=env)
+        self.assertEqual(self.export()["quellen"][0]["art"], "datei")
+        ergebnis = self.cli("beleg", "neu", "--quelle", qid, "--aussage", "x",
+                            "--zitat", "Den Vorsitz führte die Staatssekretärin. […] Förderung beträgt 1,2 Millionen Euro")
+        self.assertEqual(ergebnis.code, 0, ergebnis.err)
+        falsch = self.cli("beleg", "neu", "--quelle", qid, "--aussage", "x",
+                          "--zitat", "Den Vorsitz führte der Staatssekretär.")
+        self.assertEqual(falsch.code, 1)
 
 
 if __name__ == "__main__":
