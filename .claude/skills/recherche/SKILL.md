@@ -13,9 +13,9 @@ Steht oben kein Auftrag, frag danach.
 
 ## Die Fallakte
 
-Alles, was die Recherche weiß, steht in der Fallakte, die du über `python3 -m recherche` führst (Übersicht: `python3 -m recherche fall zeigen`, Befehle: `python3 -m recherche --help`). Was nicht mit wörtlichem Zitat in der Akte steht, gilt als nicht recherchiert, auch wenn du es für wahr hältst. Die Akte erzwingt das: Ein Zitat wird nur angenommen, wenn es im gespeicherten Schnappschuss der Quelle steht, und eine Behauptung bekommt keinen höheren Status, als ihre Belege tragen.
+Alles, was die Recherche weiß, steht in der Fallakte, die du über `python3 -m recherche` führst (Übersicht: `python3 -m recherche fall zeigen`, Befehle: `python3 -m recherche --help`, Sicherung als Datei: `python3 -m recherche fall sichern`). Was nicht mit wörtlichem Zitat in der Akte steht, gilt als nicht recherchiert, auch wenn du es für wahr hältst. Die Akte erzwingt das: Ein Zitat wird nur angenommen, wenn es im gespeicherten Schnappschuss der Quelle steht, und eine Behauptung bekommt keinen höheren Status, als ihre Belege tragen.
 
-Die Akte liegt unter `faelle/<fall>/` und wird nicht ins Git übernommen. Sie kann Namen und Vorwürfe enthalten und gehört nicht in ein öffentliches Repository.
+Die Akte liegt unter `faelle/<fall>/` und wird nicht ins Git übernommen. Sie kann Namen und Vorwürfe enthalten und gehört nicht in ein öffentliches Repository. In einer Cloud-Sitzung verschwindet sie mit dem Container: Sichere sie dort am Ende und nach jeder größeren Phase mit `fall sichern` und übergib dem Nutzer die Datei zusammen mit dem Dossier. Bringt der Nutzer eine gesicherte Akte mit, lädst du sie mit `fall laden <datei>` und arbeitest darin weiter.
 
 ## Grundsätze
 
@@ -63,6 +63,7 @@ Ohne Angabe des Nutzers schlägst du in Phase 2 eine Tiefe vor und begründest s
 | unbestätigt | als Hinweis: „unbestätigt ist, dass …“ |
 | strittig | beide Darstellungen mit ihren Quellen |
 | widerlegt | als widerlegt, mit dem Beleg dagegen |
+| Zuschreibung | mit dem Urheber: „Laut …“. Belegt ist, dass er es sagt, nicht, dass es stimmt |
 | Verdacht (Art) | als Verdacht, mit dem Stand der Belege und der Stellungnahme der Betroffenen oder dem Hinweis, dass sie aussteht |
 | Bewertung (Art) | als eigene Einschätzung gekennzeichnet |
 

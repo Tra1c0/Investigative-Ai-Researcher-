@@ -12,7 +12,7 @@ Deinen eigenen Effort kannst du nicht ändern. Wenn eine Entscheidung mehr Tiefe
 
 ## Selbst erledigen oder delegieren
 
-Delegieren ist kein Selbstzweck. In Anthropics Messungen lohnte es sich nur bei Masse: bei Arbeit, die größer ist als ein Kontextfenster, und bei Routinearbeit mit einzelnen teuren Ausreißern. War die Aufgabe eine zusammenhängende Kette, die in einen Kontext passt, lag das Modell des Orchestrators allein mit niedrigerem Effort in jedem gemessenen Fall vorn. Zerlegen kostet dort einen Plan, eine Übergabe und ein Zusammenführen, die eine einzelne Hand nicht braucht (Begründung und Zahlen: `docs/karte/ENTSCHEIDUNGEN.md`, E-005). Daraus folgt:
+Delegieren ist kein Selbstzweck. In Anthropics Messungen lohnte es sich nur in zwei Lagen: bei Arbeit, die größer ist als ein Kontextfenster, und bei Routinearbeit mit einzelnen teuren Ausreißern. War die Aufgabe eine zusammenhängende Kette, die in einen Kontext passt, lag das Modell des Orchestrators allein mit niedrigerem Effort in jedem gemessenen Fall vorn. Zerlegen kostet dort einen Plan, eine Übergabe und ein Zusammenführen, die eine einzelne Hand nicht braucht (Begründung und Zahlen: `docs/karte/ENTSCHEIDUNGEN.md`, E-005). Daraus folgt:
 
 - Zerlege nicht, was zusammenhängt. Eine zusammenhängende Aufgabe geht als Ganzes an genau einen Agenten oder bleibt bei dir.
 - Bei dir bleibt sie, wenn das Verstehen der schwierige Teil ist oder ein Fehler teuer wäre. Was du beim Planen durchdrungen hast, müsste ein anderer erst nachvollziehen, und die Qualität delegierter Arbeit ist die des Workers, nicht deine. Bei dir bleibt auch eine Änderung von wenigen Zeilen an einer Stelle, die du schon kennst.

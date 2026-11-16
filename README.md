@@ -7,7 +7,7 @@ Eine App für investigative Recherche mit Claude Code. Sie arbeitet in Rollen wi
 Die bekannten Schwächen von KI-Recherche sind erfundene oder falsch zugeordnete Zitate, eine Meldung, die als mehrere Bestätigungen gezählt wird, und Verdacht, der als Tatsache dasteht. Die Fallakte schließt das technisch aus oder macht es sichtbar:
 
 - **Zitate werden geprüft.** Ein Beleg wird nur angenommen, wenn das Zitat wörtlich im lokal gespeicherten Text der Quelle steht.
-- **Der Status hat eine Obergrenze.** „Belegt“ braucht ein amtliches Originaldokument oder zwei voneinander unabhängige, zuverlässige Quellen. Quellen mit gemeinsamem Ursprung zählen als eine.
+- **Der Status hat eine Obergrenze.** „Belegt“ braucht ein zuverlässiges amtliches Originaldokument oder zwei voneinander unabhängige, zuverlässige Quellen; „gestützt“ mindestens eine zuverlässige. Quellen mit gemeinsamem Ursprung zählen als eine. Was jemand selbst erklärt, lässt sich als Zuschreibung belegen: Belegt ist dann, dass er es sagt, nicht, dass es stimmt.
 - **Geprüft wird getrennt.** Den Status setzt eine Rolle, die die Überlegungen der Sammlung nicht kennt. Ändert sich danach etwas an Behauptung oder Belegen, gilt sie wieder als ungeprüft.
 - **Gegenrecherche ist Pflicht.** Eine Hypothese lässt sich nicht bewerten, solange keine Suche nach Widerspruch protokolliert ist.
 - **Betroffene sind geschützt.** Die Akte meldet Behauptungen über Privatpersonen, Zuordnungen allein über den Namen und belastende Aussagen ohne Stellungnahme als offen vor einer Veröffentlichung.
@@ -32,8 +32,12 @@ python3 -m recherche fall zeigen          Überblick über den Fall
 python3 -m recherche behauptung liste     alle Behauptungen mit Status
 python3 -m recherche pruefe               was offen ist, nach Dringlichkeit
 python3 -m recherche dossier              Dossier neu erzeugen
+python3 -m recherche fall sichern         Akte als Zip-Datei sichern
+python3 -m recherche fall laden <datei>   gesicherte Akte wiederherstellen
 python3 -m recherche --help               alle Befehle
 ```
+
+In einer Cloud-Sitzung verschwindet die Akte mit dem Container. Wer eine Recherche über mehrere Sitzungen führt, sichert sie am Ende und lädt sie beim nächsten Mal wieder.
 
 ## Voraussetzungen
 

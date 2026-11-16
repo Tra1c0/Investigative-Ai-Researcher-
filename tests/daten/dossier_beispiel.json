@@ -1,0 +1,766 @@
+{
+ "schema": 1,
+ "fall": {
+  "slug": "beispiel-gmbh",
+  "titel": "Beispiel GmbH und der Auftrag der Stadt Musterstadt",
+  "auftrag": "Prüfen, ob die Beispiel GmbH den Auftrag der Stadt Musterstadt regulär erhalten hat.",
+  "interesse": "Öffentliche Mittel der Stadt Musterstadt; Vergabe an ein Unternehmen mit Verbindung zur Verwaltung.",
+  "zusammenfassung": "Die Beispiel GmbH erhielt den Auftrag der Stadt Musterstadt [A1]. Die Vergabe wurde in der Presse kritisiert [A2], und es gibt einen Hinweis auf eine persönliche Verbindung [A9].\n\nDieser Absatz enthält keinen Verweis auf eine Behauptung.\n\nDie Höhe der Erlöse ist strittig [A5].",
+  "erstellt": "2024-01-10",
+  "stand": "2024-06-01"
+ },
+ "hypothesen": [
+  {
+   "id": "H1",
+   "text": "Die Vergabe an die Beispiel GmbH verlief regelwidrig.",
+   "prueft": [
+    "Die Beispiel GmbH hat den Auftrag ohne Ausschreibung erhalten.",
+    "Erika Musterfrau war an der Vergabe beteiligt."
+   ],
+   "widerlegt": [],
+   "status": "gestuetzt",
+   "vermerk": "Zwei Quellen stimmen überein."
+  },
+  {
+   "id": "H2",
+   "text": "Erika Musterfrau profitierte persönlich.",
+   "prueft": [
+    "Es gab eine Zahlung im zeitlichen Zusammenhang mit der Vergabe."
+   ],
+   "widerlegt": [
+    "Die Zahlung ist durch einen früheren, unabhängigen Vertrag erklärt."
+   ],
+   "status": "geschwaecht",
+   "vermerk": ""
+  }
+ ],
+ "fragen": [
+  {
+   "id": "F1",
+   "text": "Wurde der Auftrag öffentlich ausgeschrieben?",
+   "hypothese": "H1",
+   "plan": "Vergabeportal prüfen",
+   "status": "offen",
+   "ergebnis": "",
+   "mensch": false
+  },
+  {
+   "id": "F2",
+   "text": "Gibt es Beteiligungen von Erika Musterfrau?",
+   "hypothese": "H2",
+   "plan": "Handelsregister",
+   "status": "in_arbeit",
+   "ergebnis": "",
+   "mensch": false
+  },
+  {
+   "id": "F3",
+   "text": "Wer unterschrieb den Vertrag?",
+   "hypothese": "H1",
+   "plan": "",
+   "status": "beantwortet",
+   "ergebnis": "Max Mustermann.",
+   "mensch": false
+  },
+  {
+   "id": "F4",
+   "text": "Gibt es ein Protokoll der Ratssitzung?",
+   "hypothese": "H1",
+   "plan": "",
+   "status": "sackgasse",
+   "ergebnis": "Protokoll nicht öffentlich, Archiv verweigert Auskunft.",
+   "mensch": false
+  },
+  {
+   "id": "F5",
+   "text": "Akteneinsicht im Rathaus beantragen.",
+   "hypothese": "H1",
+   "plan": "Antrag nach Informationsfreiheitsgesetz",
+   "status": "offen",
+   "ergebnis": "",
+   "mensch": true
+  }
+ ],
+ "suchen": [
+  {
+   "id": "S1",
+   "frage": "F1",
+   "hypothese": null,
+   "anfrage": "Ausschreibung Musterstadt",
+   "richtung": "pro",
+   "treffer": 3,
+   "notiz": "",
+   "zeit": "2024-02-01",
+   "wer": "agent"
+  },
+  {
+   "id": "S2",
+   "frage": null,
+   "hypothese": "H1",
+   "anfrage": "Vergabe Beispiel GmbH korrekt",
+   "richtung": "contra",
+   "treffer": 0,
+   "notiz": "",
+   "zeit": "2024-02-02",
+   "wer": "agent"
+  },
+  {
+   "id": "S3",
+   "frage": null,
+   "hypothese": "H2",
+   "anfrage": "Musterfrau Beteiligung",
+   "richtung": "pro",
+   "treffer": 2,
+   "notiz": "",
+   "zeit": "2024-02-03",
+   "wer": "agent"
+  },
+  {
+   "id": "S4",
+   "frage": "F2",
+   "hypothese": null,
+   "anfrage": "Musterfrau Handelsregister",
+   "richtung": "neutral",
+   "treffer": 1,
+   "notiz": "",
+   "zeit": "2024-02-04",
+   "wer": "agent"
+  },
+  {
+   "id": "S5",
+   "frage": "F2",
+   "hypothese": null,
+   "anfrage": "Musterfrau Beteiligung nein",
+   "richtung": "contra",
+   "treffer": 1,
+   "notiz": "",
+   "zeit": "2024-02-05",
+   "wer": "agent"
+  }
+ ],
+ "quellen": [
+  {
+   "id": "Q1",
+   "url": "https://amt.example.org/vergabe/2023-17",
+   "titel": "Vergabebekanntmachung 2023-17",
+   "herausgeber": "Stadt Musterstadt",
+   "autor": "",
+   "datum": "2023-05-17",
+   "abgerufen": "2024-02-01",
+   "sha256": "aaaaaaaaaaaa1111222233334444",
+   "typ": "amtlich",
+   "zuverlaessigkeit": "A",
+   "ursprung": "Vergabeportal",
+   "interesse": "",
+   "archiv_url": "https://archive.example.org/q1",
+   "zeichen": 1200,
+   "art": "web"
+  },
+  {
+   "id": "Q2",
+   "url": "https://zeitung.example.org/artikel/42",
+   "titel": "Kritik an Vergabe | Kommentar",
+   "herausgeber": "Musterstädter Zeitung",
+   "autor": "Erna Beispiel",
+   "datum": "2024-03-02",
+   "abgerufen": "2024-02-02",
+   "sha256": "bbbbbbbbbbbb1111222233334444",
+   "typ": "medium",
+   "zuverlaessigkeit": "C",
+   "ursprung": "",
+   "interesse": "",
+   "archiv_url": "",
+   "zeichen": 5400,
+   "art": "web"
+  },
+  {
+   "id": "Q3",
+   "url": "https://register.example.org/hrb/000000",
+   "titel": "Handelsregisterauszug Beispiel GmbH",
+   "herausgeber": "Registergericht Musterstadt",
+   "autor": "",
+   "datum": "2024",
+   "abgerufen": "2024-02-03",
+   "sha256": "cccccccccccc1111222233334444",
+   "typ": "register",
+   "zuverlaessigkeit": "A",
+   "ursprung": "",
+   "interesse": "",
+   "archiv_url": "",
+   "zeichen": 800,
+   "art": "datei"
+  },
+  {
+   "id": "Q4",
+   "url": "https://blog.example.org/post",
+   "titel": "Blog über Lokalpolitik",
+   "herausgeber": "",
+   "autor": "Anonym",
+   "datum": "2024-03",
+   "abgerufen": "2024-02-04",
+   "sha256": "dddddddddddd1111222233334444",
+   "typ": "blog",
+   "zuverlaessigkeit": "E",
+   "ursprung": "",
+   "interesse": "politisch engagiert",
+   "archiv_url": "",
+   "zeichen": 2100,
+   "art": "web"
+  },
+  {
+   "id": "Q5",
+   "url": "",
+   "titel": "Mitteilung per E-Mail",
+   "herausgeber": "Beispiel GmbH",
+   "autor": "",
+   "datum": "2024-04-01",
+   "abgerufen": "",
+   "sha256": "eeeeeeeeeeee1111222233334444",
+   "typ": "eigenangabe",
+   "zuverlaessigkeit": "",
+   "ursprung": "Pressestelle",
+   "interesse": "Eigeninteresse",
+   "archiv_url": "",
+   "zeichen": 300,
+   "art": "text"
+  },
+  {
+   "id": "Q6",
+   "url": "https://gericht.example.org/az/1",
+   "titel": "Beschluss Az. 1 Muster 23",
+   "herausgeber": "Amtsgericht Musterstadt",
+   "autor": "",
+   "datum": "2024-03-02",
+   "abgerufen": "2024-02-06",
+   "sha256": "ffffffffffff1111222233334444",
+   "typ": "gericht",
+   "zuverlaessigkeit": "B",
+   "ursprung": "",
+   "interesse": "",
+   "archiv_url": "",
+   "zeichen": 900,
+   "art": "web"
+  }
+ ],
+ "belege": [
+  {
+   "id": "B1",
+   "quelle": "Q1",
+   "zitat": "Zuschlag erteilt an die Beispiel GmbH.",
+   "stelle": 120,
+   "aussage": "Die Beispiel GmbH bekam den Zuschlag.",
+   "direkt": true,
+   "frage": "F1",
+   "wer": "agent",
+   "zeit": "2024-02-01",
+   "zitat_ok": true
+  },
+  {
+   "id": "B2",
+   "quelle": "Q2",
+   "zitat": "Die Stadt habe den Auftrag ohne Ausschreibung vergeben.\nDas sagt der Stadtrat.",
+   "stelle": 300,
+   "aussage": "Die Zeitung berichtet über fehlende Ausschreibung.",
+   "direkt": false,
+   "frage": "F1",
+   "wer": "agent",
+   "zeit": "2024-02-02",
+   "zitat_ok": true
+  },
+  {
+   "id": "B3",
+   "quelle": "Q3",
+   "zitat": "Geschäftsführerin: Erika Musterfrau",
+   "stelle": 40,
+   "aussage": "Erika Musterfrau leitet die GmbH.",
+   "direkt": true,
+   "frage": "F2",
+   "wer": "agent",
+   "zeit": "2024-02-03",
+   "zitat_ok": true
+  },
+  {
+   "id": "B4",
+   "quelle": "Q4",
+   "zitat": "Man munkelt, sie kenne den Bürgermeister.",
+   "stelle": null,
+   "aussage": "Hinweis auf persönliche Nähe.",
+   "direkt": false,
+   "frage": null,
+   "wer": "agent",
+   "zeit": "2024-02-04",
+   "zitat_ok": false
+  },
+  {
+   "id": "B5",
+   "quelle": "Q2",
+   "zitat": "Der Umsatz lag bei rund zwei Millionen Euro.",
+   "stelle": 900,
+   "aussage": "Umsatz zwei Millionen.",
+   "direkt": false,
+   "frage": null,
+   "wer": "agent",
+   "zeit": "2024-02-02",
+   "zitat_ok": true
+  },
+  {
+   "id": "B6",
+   "quelle": "Q6",
+   "zitat": "Der Umsatz betrug 1,2 Millionen Euro.",
+   "stelle": 50,
+   "aussage": "Umsatz 1,2 Millionen.",
+   "direkt": true,
+   "frage": null,
+   "wer": "agent",
+   "zeit": "2024-02-06",
+   "zitat_ok": true
+  },
+  {
+   "id": "B7",
+   "quelle": "Q1",
+   "zitat": "Eine Beteiligung von Erika Musterfrau besteht nicht.",
+   "stelle": 200,
+   "aussage": "Keine Beteiligung.",
+   "direkt": true,
+   "frage": "F2",
+   "wer": "agent",
+   "zeit": "2024-02-05",
+   "zitat_ok": true
+  },
+  {
+   "id": "B8",
+   "quelle": "Q3",
+   "zitat": "Sitz: Musterstadt, Beispielweg 1",
+   "stelle": 10,
+   "aussage": "Die GmbH sitzt in Musterstadt.",
+   "direkt": true,
+   "frage": null,
+   "wer": "agent",
+   "zeit": "2024-02-03",
+   "zitat_ok": true
+  },
+  {
+   "id": "B9",
+   "quelle": "Q5",
+   "zitat": "Wir weisen die Vorwürfe zurück.",
+   "stelle": null,
+   "aussage": "Stellungnahme der GmbH.",
+   "direkt": false,
+   "frage": null,
+   "wer": "mensch",
+   "zeit": "2024-04-01",
+   "zitat_ok": true
+  }
+ ],
+ "behauptungen": [
+  {
+   "id": "A3",
+   "text": "Erika Musterfrau kennt den Bürgermeister persönlich.",
+   "art": "verdacht",
+   "hypothese": "H1",
+   "pro": [
+    "B4"
+   ],
+   "contra": [],
+   "aus": [],
+   "betrifft": [
+    "P1"
+   ],
+   "belastend": false,
+   "status": "unbestaetigt",
+   "obergrenze": "gestuetzt",
+   "obergrenze_grund": "Nur eine unzuverlässige Quelle.",
+   "vermerk": "",
+   "pruefer": "",
+   "geprueft": "",
+   "klaerung": "Zweite Quelle suchen."
+  },
+  {
+   "id": "A2",
+   "zuschreibung": true,
+   "text": "Laut Zeitungsbericht wurde die Vergabe ohne Ausschreibung vorgenommen.",
+   "art": "tatsache",
+   "hypothese": "H1",
+   "pro": [
+    "B2"
+   ],
+   "contra": [],
+   "aus": [
+    "A1"
+   ],
+   "betrifft": [
+    "O2"
+   ],
+   "belastend": true,
+   "status": "gestuetzt",
+   "obergrenze": "",
+   "obergrenze_grund": "",
+   "vermerk": "Plausibel, aber nur Pressebericht.",
+   "pruefer": "Prüferin Muster",
+   "geprueft": "2024-05-10",
+   "klaerung": ""
+  },
+  {
+   "id": "A8",
+   "text": "Die Beispiel GmbH hat ihren Sitz in Musterstadt.",
+   "art": "tatsache",
+   "hypothese": "H1",
+   "pro": [
+    "B8",
+    "B1"
+   ],
+   "contra": [],
+   "aus": [],
+   "betrifft": [
+    "O1"
+   ],
+   "belastend": false,
+   "status": "belegt",
+   "obergrenze": "",
+   "obergrenze_grund": "",
+   "vermerk": "",
+   "pruefer": "",
+   "geprueft": "",
+   "klaerung": ""
+  },
+  {
+   "id": "A1",
+   "text": "Die Beispiel GmbH erhielt den Zuschlag der Stadt Musterstadt.",
+   "art": "tatsache",
+   "hypothese": "H1",
+   "pro": [
+    "B1",
+    "B3"
+   ],
+   "contra": [],
+   "aus": [],
+   "betrifft": [
+    "O1",
+    "O2"
+   ],
+   "belastend": false,
+   "status": "belegt",
+   "obergrenze": "",
+   "obergrenze_grund": "",
+   "vermerk": "Amtliche Quelle.",
+   "pruefer": "Prüferin Muster",
+   "geprueft": "2024-05-09",
+   "klaerung": ""
+  },
+  {
+   "id": "A7",
+   "text": "Erika Musterfrau hält Anteile an der Beispiel GmbH.",
+   "art": "tatsache",
+   "hypothese": "H2",
+   "pro": [],
+   "contra": [
+    "B7"
+   ],
+   "aus": [],
+   "betrifft": [
+    "P1",
+    "O1"
+   ],
+   "belastend": true,
+   "status": "widerlegt",
+   "obergrenze": "",
+   "obergrenze_grund": "",
+   "vermerk": "Registerauszug widerspricht.",
+   "pruefer": "",
+   "geprueft": "",
+   "klaerung": ""
+  },
+  {
+   "id": "A4",
+   "text": "Die Vergabe diente der Begünstigung von Erika Musterfrau.",
+   "art": "schlussfolgerung",
+   "hypothese": "H2",
+   "pro": [],
+   "contra": [],
+   "aus": [
+    "A1",
+    "A2"
+   ],
+   "betrifft": [
+    "P1"
+   ],
+   "belastend": true,
+   "status": "ungeprueft",
+   "obergrenze": "unbestaetigt",
+   "obergrenze_grund": "Keine direkte Evidenz für Motiv.",
+   "vermerk": "",
+   "pruefer": "",
+   "geprueft": "",
+   "klaerung": ""
+  },
+  {
+   "id": "A5",
+   "text": "Der Umsatz der Beispiel GmbH beträgt zwei Millionen Euro.",
+   "art": "tatsache",
+   "hypothese": "H2",
+   "pro": [
+    "B5"
+   ],
+   "contra": [
+    "B6"
+   ],
+   "aus": [],
+   "betrifft": [
+    "O1"
+   ],
+   "belastend": false,
+   "status": "strittig",
+   "obergrenze": "",
+   "obergrenze_grund": "",
+   "vermerk": "",
+   "pruefer": "",
+   "geprueft": "",
+   "klaerung": "Zahlen widersprechen sich; Bilanz anfordern."
+  },
+  {
+   "id": "A6",
+   "text": "Die Vergabepraxis der Stadt ist undurchsichtig.",
+   "art": "bewertung",
+   "hypothese": null,
+   "pro": [],
+   "contra": [],
+   "aus": [],
+   "betrifft": [],
+   "belastend": false,
+   "status": "werturteil",
+   "obergrenze": "",
+   "obergrenze_grund": "",
+   "vermerk": "",
+   "pruefer": "",
+   "geprueft": "",
+   "klaerung": ""
+  }
+ ],
+ "akteure": [
+  {
+   "id": "P1",
+   "art": "person",
+   "name": "Erika Musterfrau",
+   "kategorie": "oeffentlich",
+   "kennungen": {
+    "Funktion": "Geschäftsführerin"
+   },
+   "notiz": "",
+   "belege": [
+    "B3"
+   ]
+  },
+  {
+   "id": "P2",
+   "art": "person",
+   "name": "Max Mustermann",
+   "kategorie": "amtstraeger",
+   "kennungen": {},
+   "notiz": "",
+   "belege": []
+  },
+  {
+   "id": "P3",
+   "art": "person",
+   "name": "Hans Beispiel",
+   "kategorie": "funktion",
+   "kennungen": {},
+   "notiz": "",
+   "belege": []
+  },
+  {
+   "id": "P4",
+   "art": "person",
+   "name": "Erna Beispiel",
+   "kategorie": "privat",
+   "kennungen": {},
+   "notiz": "",
+   "belege": []
+  },
+  {
+   "id": "P5",
+   "art": "person",
+   "name": "Unbekannte Person",
+   "kategorie": "unbekannt",
+   "kennungen": {},
+   "notiz": "",
+   "belege": []
+  },
+  {
+   "id": "O1",
+   "art": "organisation",
+   "name": "Beispiel GmbH",
+   "kategorie": "organisation",
+   "kennungen": {
+    "HRB": "000000",
+    "Sitz": "Musterstadt"
+   },
+   "notiz": "",
+   "belege": [
+    "B8"
+   ]
+  },
+  {
+   "id": "O2",
+   "art": "organisation",
+   "name": "Stadt Musterstadt",
+   "kategorie": "organisation",
+   "kennungen": {},
+   "notiz": "",
+   "belege": []
+  }
+ ],
+ "beziehungen": [
+  {
+   "id": "R1",
+   "von": "O1",
+   "zu": "O2",
+   "art": "Auftragnehmer von",
+   "von_datum": "2023-05",
+   "bis_datum": "",
+   "belege": [
+    "B1"
+   ]
+  },
+  {
+   "id": "R2",
+   "von": "P1",
+   "zu": "O1",
+   "art": "Geschäftsführerin von",
+   "von_datum": "2019",
+   "bis_datum": "2024-01",
+   "belege": [
+    "B3"
+   ]
+  }
+ ],
+ "ereignisse": [
+  {
+   "id": "E1",
+   "datum": "2024-03",
+   "text": "Kritik an der Vergabe wird öffentlich.",
+   "belege": [
+    "B2"
+   ],
+   "akteure": [
+    "O2"
+   ]
+  },
+  {
+   "id": "E2",
+   "datum": "2024",
+   "text": "Die GmbH weist die Vorwürfe zurück.",
+   "belege": [
+    "B9"
+   ],
+   "akteure": [
+    "O1"
+   ]
+  },
+  {
+   "id": "E3",
+   "datum": "2023-05-17",
+   "text": "Zuschlag an die Beispiel GmbH.",
+   "belege": [
+    "B1"
+   ],
+   "akteure": [
+    "O1",
+    "O2"
+   ]
+  },
+  {
+   "id": "E4",
+   "datum": "2024-03-02",
+   "text": "Beschluss des Amtsgerichts.",
+   "belege": [
+    "B6"
+   ],
+   "akteure": []
+  }
+ ],
+ "konfrontationen": [
+  {
+   "id": "K1",
+   "akteur": "P1",
+   "frage": "Bestehen persönliche Verbindungen zum Bürgermeister?",
+   "zu": [
+    "A3"
+   ],
+   "status": "entwurf",
+   "gesendet_am": "",
+   "frist": "",
+   "antwort": "",
+   "antwort_quelle": null,
+   "vermerk": ""
+  },
+  {
+   "id": "K2",
+   "akteur": "O1",
+   "frage": "Wie hoch war der Umsatz?",
+   "zu": [
+    "A5"
+   ],
+   "status": "gesendet",
+   "gesendet_am": "2024-05-01",
+   "frist": "2024-05-15",
+   "antwort": "",
+   "antwort_quelle": null,
+   "vermerk": ""
+  },
+  {
+   "id": "K3",
+   "akteur": "O1",
+   "frage": "Wurde ausgeschrieben?",
+   "zu": [
+    "A2"
+   ],
+   "status": "beantwortet",
+   "gesendet_am": "2024-04-01",
+   "frist": "2024-04-10",
+   "antwort": "Wir weisen die Vorwürfe zurück.",
+   "antwort_quelle": "Q5",
+   "vermerk": "Keine Details genannt."
+  },
+  {
+   "id": "K4",
+   "akteur": "P2",
+   "frage": "Wer entschied über den Zuschlag?",
+   "zu": [
+    "A1"
+   ],
+   "status": "keine_antwort",
+   "gesendet_am": "2024-04-01",
+   "frist": "2024-04-10",
+   "antwort": "",
+   "antwort_quelle": null,
+   "vermerk": "Frist verstrichen."
+  }
+ ],
+ "probleme": [
+  {
+   "stufe": "sperre",
+   "art": "ohne_zitat",
+   "objekt": "A4",
+   "text": "Schlussfolgerung ohne geprüfte Grundlage."
+  },
+  {
+   "stufe": "veroeffentlichung",
+   "art": "keine_konfrontation",
+   "objekt": "A3",
+   "text": "Betroffene nicht konfrontiert."
+  },
+  {
+   "stufe": "veroeffentlichung",
+   "art": "einzige_quelle",
+   "objekt": "A2",
+   "text": "Nur ein Pressebericht."
+  },
+  {
+   "stufe": "hinweis",
+   "art": "veraltet",
+   "objekt": "Q4",
+   "text": "Quelle älter als sechs Monate."
+  }
+ ]
+}

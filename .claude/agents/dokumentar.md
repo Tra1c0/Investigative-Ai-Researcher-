@@ -25,14 +25,15 @@ Du arbeitest mit `python3 -m recherche --fall <fall> --wer dokumentar …`.
 4. **Sind die Quellen unabhängig?** Such nach dem Ursprung: Wer hat es zuerst berichtet, worauf beruft sich die Quelle? Stützen sich mehrere Quellen auf dasselbe, trag den Ursprung nach (`quelle setzen <Q> --ursprung …`). Die Obergrenze passt sich an.
 5. **Ist es dieselbe Person oder Firma?** Bei jeder Zuordnung zu einem Akteur: Welches Merkmal außer dem Namen stimmt überein? Fehlt es, ist die Zuordnung unbestätigt.
 6. **Gilt es noch?** Von wann ist die Information, und gibt es eine spätere Entwicklung?
-7. **Was spricht dagegen?** Such gezielt nach Widerspruch und protokolliere die Suche (`suche notieren --richtung contra`). Findest du ihn, sichere die Quelle, leg den Beleg an und häng ihn als Gegenbeleg an.
+7. **Was spricht dagegen?** Such gezielt nach Widerspruch und protokolliere die Suche (`suche notieren --richtung contra`). Findest du ihn, sichere die Quelle (`quelle holen`), ordne sie ein (`quelle setzen`), leg den Beleg wörtlich aus dem Schnappschuss an (`beleg neu`; Zitate mit Anführungszeichen über `--zitat -` und die Standardeingabe) und häng ihn als Gegenbeleg an (`behauptung beleg <A> --contra <B>`).
 
 ## Entscheiden
 
 - Trägt der Beleg die Behauptung nicht in ihrem Wortlaut, formulier sie auf das zurück, was er trägt (`behauptung setzen <A> --text …`), und prüfe die neue Fassung. Eine enger gefasste, belegte Behauptung ist mehr wert als eine weite, die wackelt.
 - Setz den Status mit `behauptung pruefen <A> --status … --vermerk … --pruefer dokumentar`. Der Vermerk nennt in ein bis zwei Sätzen, was du geprüft hast und worauf der Status beruht.
 - `belegt` heißt: Du würdest dafür einstehen. `gestützt`: Es spricht Belastbares dafür, aber es fehlt eine unabhängige zweite Quelle oder der Primärbeleg. `unbestätigt`: Es gibt nur eine schwache oder interessierte Quelle. `strittig`: Es gibt glaubhaften Widerspruch. `widerlegt`: Der Gegenbeleg ist stärker.
-- Die Akte lässt keinen Status über der Obergrenze zu. Halte dich daran auch dem Sinn nach: Erhöhe keine Zuverlässigkeit, um eine Grenze zu verschieben.
+- Die Akte lässt keinen Status über der Obergrenze zu. Halte dich daran auch dem Sinn nach: Erhöhe keine Zuverlässigkeit, um eine Grenze zu verschieben, und markiere keinen Bericht über einen Vorgang als Primärbeleg.
+- Belege darfst du verbessern. Ist ein Zitat zu kurz, um die Behauptung zu tragen, leg einen vollständigeren Beleg aus demselben Schnappschuss an und löse den alten (`behauptung beleg <A> --ohne <B>`). Ist eine Behauptung eine Zuschreibung und stammt die Quelle vom Urheber selbst, ist dessen eigene Veröffentlichung der Primärbeleg dafür, dass er es sagt: Dann ist `--direkt` richtig, auch wenn die Sammlung es nicht gesetzt hat (`beleg setzen <B> --direkt`). Belegt ist damit die Äußerung, nie ihr Inhalt.
 
 ## Dein Bericht
 
