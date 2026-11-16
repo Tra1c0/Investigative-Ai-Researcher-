@@ -18,6 +18,7 @@ import os
 import re
 import secrets
 import shutil
+import socket
 import sqlite3
 import sys
 import tempfile
@@ -30,7 +31,7 @@ from urllib.parse import parse_qs, urlsplit
 from . import bewertung, cli
 from . import quellen as q
 from . import store
-from .store import SLUG, Fall, Fehler, faelle_liste, faelle_wurzel, lade_fall, sichere_fall
+from .store import SLUG, Fall, Fehler, faelle_liste, faelle_wurzel, sichere_fall
 
 SEITE = Path(__file__).resolve().parent / "web_ui.html"
 
@@ -43,9 +44,25 @@ WER_STANDARD = "nutzer"
 # Ein Befehl nach dem anderen: die Kommandozeile tauscht Standardströme des Prozesses aus.
 _SPERRE = threading.Lock()
 
+LESE_TIMEOUT = 30  # Sekunden je Lese- oder Schreibvorgang einer Verbindung
+
 _VERBOTENE_BEFEHLE = (("quelle", "datei"), ("fall", "sichern"), ("fall", "laden"))
 _VERBOTENE_OPTIONEN = ("--datei", "--ziel")
-_OHNE_FALL = (["fall", "neu"], ["fall", "liste"])
+_OHNE_FALL = (("fall", "neu"), ("fall", "liste"))
+# Erlaubt ist, was die Seite schickt (der Test liest die Paare aus web_ui.html); alles andere 403.
+ERLAUBT = frozenset([
+    ("fall", "neu"), ("fall", "setzen"), ("fall", "liste"),
+    ("hypothese", "neu"), ("hypothese", "status"),
+    ("frage", "neu"), ("frage", "status"),
+    ("suche", "notieren"),
+    ("quelle", "holen"), ("quelle", "text"), ("quelle", "lesen"), ("quelle", "setzen"),
+    ("beleg", "neu"),
+    ("behauptung", "neu"), ("behauptung", "setzen"), ("behauptung", "beleg"), ("behauptung", "pruefen"),
+    ("akteur", "neu"), ("akteur", "setzen"),
+    ("beziehung", "neu"), ("ereignis", "neu"),
+    ("konfrontation", "neu"), ("konfrontation", "status"), ("konfrontation", "antwort"),
+    ("konfrontation", "keine-antwort"),
+])
 
 
 class Anfragefehler(Exception):
@@ -86,12 +103,16 @@ def pruefe_wer(wert):
 
 
 def pruefe_argv(argv):
-    """Weist Befehle ab, mit denen der Client einen Pfad wählen könnte."""
+    """Erste Stufe, auf der Rohliste: Form und offensichtliche Pfadwünsche. Maßgeblich ist die
+    zweite Stufe (`_pruefer`), die prüft, was der Parser verstanden hat; argparse kennt Wege,
+    die sich auf der Liste nicht sicher erkennen lassen (`--`, Abkürzungen)."""
     if (not isinstance(argv, list) or not argv or len(argv) > 200
             or not all(isinstance(a, str) for a in argv)):
         raise Anfragefehler(400, "argv muss eine nichtleere Liste von Texten sein.")
     if argv[0].startswith("-"):
         raise Anfragefehler(403, "Globale Optionen setzt die Oberfläche selbst.")
+    if "--" in argv:
+        raise Anfragefehler(403, "Das Trennzeichen -- ist über die Weboberfläche nicht erlaubt.")
     if argv[0] == "web" or tuple(argv[:2]) in _VERBOTENE_BEFEHLE:
         raise Anfragefehler(403, "Dieser Befehl ist über die Weboberfläche nicht erlaubt: %s."
                             % " ".join(argv[:2]))
@@ -104,12 +125,29 @@ def pruefe_argv(argv):
                                     "erlaubt." % name)
 
 
+def _pruefer(slug, wer):
+    """Zweite Stufe: prüft die geparste Namespace, genau die, die danach läuft."""
+    def pruefe(args):
+        paar = (getattr(args, "bereich", None), getattr(args, "aktion", None))
+        if paar not in ERLAUBT:
+            raise Anfragefehler(403, "Dieser Befehl ist über die Weboberfläche nicht erlaubt: %s."
+                                % (" ".join(t for t in paar if t) or "?"))
+        for name in ("pfad", "datei", "ziel"):
+            if getattr(args, name, None) is not None:
+                raise Anfragefehler(403, "Die Weboberfläche liest oder schreibt keine vom Client "
+                                    "gewählten Pfade (%s)." % name)
+        if getattr(args, "fall", None) != slug or getattr(args, "wer", None) != wer:
+            raise Anfragefehler(403, "Fall und Name setzt die Oberfläche selbst.")
+    return pruefe
+
+
 # ===========================================================================
 # Befehle ausführen
 # ===========================================================================
 
-def _lauf(argv, eingabe):
-    """Führt `cli.main(argv)` aus; Standardströme ersetzt, SystemExit abgefangen."""
+def _lauf(argv, eingabe, pruefung):
+    """Parst `argv`, prüft die Namespace mit `pruefung` und führt genau diese aus
+    (`cli.fuehre_aus`); Standardströme ersetzt, SystemExit abgefangen."""
     aus, fehler = io.StringIO(), io.StringIO()
     stdin_alt = sys.stdin
     sys.stdin = io.TextIOWrapper(io.BytesIO((eingabe or "").encode("utf-8")), encoding="utf-8")
@@ -120,7 +158,9 @@ def _lauf(argv, eingabe):
                 warnings.catch_warnings():
             warnings.simplefilter("ignore", ResourceWarning)
             try:
-                code = cli.main(argv)
+                args = cli.baue_parser().parse_args(argv)
+                pruefung(args)
+                code = cli.fuehre_aus(args)
             except SystemExit as ende:
                 code = ende.code
                 if code is None:
@@ -128,6 +168,8 @@ def _lauf(argv, eingabe):
                 elif not isinstance(code, int):
                     fehler.write("fehler: %s\n" % code)
                     code = 1
+            except Anfragefehler:
+                raise
             except Exception as unerwartet:  # nie den Server mitreißen
                 fehler.write("fehler: unerwarteter Fehler: %s: %s\n"
                              % (type(unerwartet).__name__, unerwartet))
@@ -143,14 +185,17 @@ def fuehre_befehl_aus(fall, wer, argv, eingabe):
     if eingabe is not None and not isinstance(eingabe, str):
         raise Anfragefehler(400, "eingabe muss ein Text oder null sein.")
     wer = pruefe_wer(wer)
-    vorspann = ["--wer", wer]
+    # Mit = angehängt, damit ein Name oder Fall, der mit - beginnt, keine Option wird.
+    vorspann = ["--wer=" + wer]
+    slug = None
     if fall is None:
-        if argv[:2] not in _OHNE_FALL:
+        if tuple(argv[:2]) not in _OHNE_FALL:
             raise Anfragefehler(400, "Für diesen Befehl muss ein Fall angegeben werden.")
     else:
-        vorspann += ["--fall", pruefe_slug(fall)]
+        slug = pruefe_slug(fall)
+        vorspann.append("--fall=" + slug)
     with _SPERRE:
-        return _lauf(vorspann + argv, eingabe)
+        return _lauf(vorspann + argv, eingabe, _pruefer(slug, wer))
 
 
 def _dateiname(name):
@@ -167,11 +212,15 @@ def lade_quelle_datei(slug, titel, name, roh, wer, typ):
     with tempfile.TemporaryDirectory(prefix="recherche-upload-") as temp:
         pfad = Path(temp) / _dateiname(name)
         pfad.write_bytes(roh)
-        argv = ["--wer", wer, "--fall", slug, "quelle", "datei", str(pfad), "--titel", titel or ""]
+        argv = ["--wer=" + wer, "--fall=" + slug, "quelle", "datei", str(pfad), "--titel=" + (titel or "")]
         if typ:
-            argv += ["--typ", typ]
+            argv.append("--typ=" + typ)
+
+        def pruefe(args):
+            if (args.bereich, args.aktion, args.pfad, args.fall, args.wer) != ("quelle", "datei", str(pfad), slug, wer):
+                raise Anfragefehler(403, "Interner Fehler beim Hochladen.")
         with _SPERRE:
-            return _lauf(argv, None)
+            return _lauf(argv, None, pruefe)
 
 
 # ===========================================================================
@@ -237,16 +286,42 @@ def exportiere(slug, zielverzeichnis):
     return str(pfad)
 
 
+def lade_akte(pfad, herkunft):
+    """Lädt und prüft eine gesicherte Akte; gibt (Slug, [(ID, Grund)]) zurück."""
+    with _SPERRE:
+        return bewertung.lade_akte(faelle_wurzel(), pfad, "web", herkunft)
+
+
 def importiere(pfad):
-    """Stellt eine gesicherte Akte wieder her (`store.lade_fall`) und gibt den Slug zurück."""
+    """Stellt eine gesicherte Akte wieder her und gibt den Text zurück, den die Hülle dem
+    Nutzer zeigt: „Akte geladen: <slug>“, bei zurückgesetzten Prüfungen mit deren Zahl."""
+    slug, zurueck = lade_akte(pfad, "Weboberfläche")
+    text = "Akte geladen: %s" % slug
+    if zurueck:
+        text += " (%d Prüfung%s zurückgesetzt: %s)" % (
+            len(zurueck), "" if len(zurueck) == 1 else "en", ", ".join(aid for aid, _ in zurueck))
+    return text
+
+
+def loesche_fall(slug, bestaetigung):
+    """Entfernt einen Fall endgültig. Nur über die Weboberfläche, nie über `befehl`: Der Fall
+    und die Bestätigung müssen derselbe vorhandene Slug sein."""
+    slug = pruefe_slug(slug)
+    if bestaetigung != slug:
+        raise Anfragefehler(400, "Die Bestätigung stimmt nicht mit dem Kurznamen des Falls "
+                            "überein; nichts wurde gelöscht.")
     wurzel = faelle_wurzel()
     with _SPERRE:
-        slug = lade_fall(wurzel, pfad)
-        with _fall_lesen(slug) as fall:
-            fall.conn.execute("PRAGMA journal_mode=WAL")
-            fall.wer = "web"
-            with fall.schreiben():
-                fall.log("fall laden", slug, "Weboberfläche")
+        ziel = wurzel / slug
+        temp = wurzel / (".loeschen-" + secrets.token_hex(8))
+        try:
+            os.rename(str(ziel), str(temp))
+        except OSError as fehler:
+            raise Anfragefehler(500, "Der Fall ließ sich nicht entfernen: %s" % fehler)
+        if temp.is_symlink():
+            temp.unlink()
+        else:
+            shutil.rmtree(str(temp), ignore_errors=True)
     return slug
 
 
@@ -271,6 +346,7 @@ _NICHT_ZEICHEN = re.compile(r"[^A-Za-z0-9._-]")
 class _Handler(BaseHTTPRequestHandler):
     server_version = "recherche"
     sys_version = ""
+    timeout = LESE_TIMEOUT  # ein Client, der nichts sendet, hält den Thread nicht ewig
     # HTTP/1.0: jede Antwort schließt die Verbindung, ein ungelesener Rest eines
     # abgelehnten Bodys kann so keine Folgeanfrage verfälschen.
 
@@ -357,6 +433,7 @@ class _Handler(BaseHTTPRequestHandler):
     do_DELETE = do_PATCH = do_OPTIONS = do_PUT
 
     def _bearbeite(self):
+        self._body_gelesen = False
         try:
             self._verteile()
         except Anfragefehler as fehler:
@@ -365,6 +442,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(fehler.status, {"fehler": fehler.text})
             else:
                 self._text(fehler.status, fehler.text)
+            if self.command == "POST" and not self._body_gelesen:
+                self._lingern()
         except (BrokenPipeError, ConnectionResetError):
             pass
         except Exception as unerwartet:
@@ -373,6 +452,23 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(500, {"fehler": "Interner Fehler: %s" % type(unerwartet).__name__})
             except OSError:
                 pass
+
+    def _lingern(self):
+        """Nach einer Antwort, bevor der Körper gelesen wurde: erst die Senderichtung schließen
+        und ein Stück vom Rest lesen. Wer die Verbindung mit ungelesenen Daten schließt, löst ein
+        RST aus, das die Antwort beim Client vernichten kann."""
+        try:
+            self.wfile.flush()
+            self.connection.shutdown(socket.SHUT_WR)
+            self.connection.settimeout(1)
+            rest = 64 * 1024
+            while rest > 0:
+                stueck = self.connection.recv(min(rest, 16 * 1024))
+                if not stueck:
+                    break
+                rest -= len(stueck)
+        except OSError:
+            pass
 
     def _verteile(self):
         if not self._erlaubter_host():
@@ -388,7 +484,7 @@ class _Handler(BaseHTTPRequestHandler):
                                 "öffnen (python3 -m recherche web gibt sie aus).")
         if self.command == "POST":
             routen = {"/api/befehl": self._befehl, "/api/quelle-datei": self._quelle_datei,
-                      "/api/laden": self._laden}
+                      "/api/laden": self._laden, "/api/loeschen": self._loeschen}
         else:
             routen = {"/": self._seite, "/api/faelle": self._faelle, "/api/optionen": self._optionen,
                       "/api/export": self._export, "/api/dossier": self._dossier,
@@ -425,6 +521,7 @@ class _Handler(BaseHTTPRequestHandler):
         return laenge
 
     def _lies(self, laenge):
+        self._body_gelesen = True
         teile, rest = [], laenge
         while rest > 0:
             stueck = self.rfile.read(min(65536, rest))
@@ -513,23 +610,39 @@ class _Handler(BaseHTTPRequestHandler):
         wurzel = faelle_wurzel()
         wurzel.mkdir(parents=True, exist_ok=True)
         temp = Path(tempfile.mkdtemp(prefix=".upload-", dir=str(wurzel)))
+        self._body_gelesen = True
         try:
             pfad = temp / "akte.zip"
-            with open(str(pfad), "wb") as datei:
-                rest = laenge
-                while rest > 0:
-                    stueck = self.rfile.read(min(1024 * 1024, rest))
-                    if not stueck:
-                        raise Anfragefehler(400, "Anfrage unvollständig.")
-                    datei.write(stueck)
-                    rest -= len(stueck)
             try:
-                slug = importiere(pfad)
+                with open(str(pfad), "wb") as datei:
+                    rest = laenge
+                    while rest > 0:
+                        stueck = self.rfile.read(min(1024 * 1024, rest))
+                        if not stueck:
+                            raise Anfragefehler(400, "Anfrage unvollständig.")
+                        datei.write(stueck)
+                        rest -= len(stueck)
+            except OSError as fehler:
+                if isinstance(fehler, socket.timeout):
+                    raise
+                raise Anfragefehler(400, "Das Archiv ließ sich nicht zwischenspeichern: %s" % fehler)
+            try:
+                slug, zurueck = lade_akte(pfad, "Weboberfläche")
             except Fehler as fehler:
                 raise Anfragefehler(400, str(fehler))
         finally:
             shutil.rmtree(str(temp), ignore_errors=True)
-        self._json(200, {"slug": slug})
+        self._json(200, {"slug": slug, "zurueckgesetzt": [aid for aid, _ in zurueck]})
+
+    def _loeschen(self, abfrage):
+        laenge = self._koerper(MAX_JSON, "application/json")
+        try:
+            daten = json.loads(self._lies(laenge).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            raise Anfragefehler(400, "Der Körper ist kein gültiges JSON.")
+        if not isinstance(daten, dict):
+            raise Anfragefehler(400, "Der Körper muss ein JSON-Objekt sein.")
+        self._json(200, {"geloescht": loesche_fall(daten.get("fall"), daten.get("bestaetigung"))})
 
 
 class Server:

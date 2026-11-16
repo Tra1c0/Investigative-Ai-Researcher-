@@ -1,24 +1,30 @@
 """Tests der Weboberfläche (recherche/web.py, recherche/web_ui.html). Kein Test greift auf das Internet zu."""
 
+import contextlib
 import http.client
+import io
 import json
 import os
 import re
 import shutil
+import socket
+import sqlite3
+import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from recherche import web
-from test_recherche_basis import REPO, FallTest, Testserver
+from test_recherche_basis import REPO, ArchivHilfen, FallTest, Testserver
 
 ZITAT_TEXT = ('Er sagte: "Das ist nicht wahr" und \'nie\' mehr. Kosten: $HOME und `date` je Monat. '
               "Weiterer Satz, damit der Text lang genug ist.")
 ZITAT = '"Das ist nicht wahr" und \'nie\' mehr. Kosten: $HOME und `date` je Monat.'
 
 
-class WebTest(FallTest):
+class WebTest(ArchivHilfen, FallTest):
     def setUp(self):
         super().setUp()
         umgebung = mock.patch.dict(os.environ, {
@@ -141,33 +147,41 @@ class Zugang(WebTest):
 
     def test_grenzen_der_koerper(self):
         kopf = {"Content-Type": "application/json"}
-        gross = json.dumps({"fall": None, "argv": ["fall", "liste"], "eingabe": "x" * (1024 * 1024)})
-        status, _, _ = self.http("POST", "/api/befehl", gross, kopf)
-        self.assertEqual(status, 413)
         status, _, _ = self.http("POST", "/api/befehl", "{}", {"Content-Type": "text/plain"})
         self.assertEqual(status, 415)
         status, _, _ = self.http("POST", "/api/befehl", "kein json", kopf)
         self.assertEqual(status, 400)
-        # Zu große Uploads werden an der Content-Length abgelehnt, ohne den Körper zu lesen.
-        for pfad, groesse in (("/api/quelle-datei?fall=t&titel=x&name=a.txt", 26 * 1024 * 1024),
-                              ("/api/laden", 513 * 1024 * 1024)):
+        # Zu große Anfragen lehnt der Server an der Content-Length ab, ohne den Körper zu lesen. Der Test
+        # erklärt die Länge und sendet keinen Körper: Es gibt keinen Schreibvorgang, der mit der
+        # Antwort des Servers um das Ende der Verbindung wetteifern könnte.
+        for pfad, groesse, typ in (("/api/befehl", 1024 * 1024 + 1, "application/json"),
+                                   ("/api/loeschen", 1024 * 1024 + 1, "application/json"),
+                                   ("/api/quelle-datei?fall=t&titel=x&name=a.txt", 26 * 1024 * 1024, "application/octet-stream"),
+                                   ("/api/laden", 513 * 1024 * 1024, "application/octet-stream")):
             verbindung = http.client.HTTPConnection("127.0.0.1", self.port, timeout=30)
             verbindung.putrequest("POST", pfad, skip_host=True)
             for name, wert in (("Host", "127.0.0.1:%d" % self.port), ("X-Recherche-Token", self.server.token),
-                               ("Content-Type", "application/octet-stream"), ("Content-Length", str(groesse))):
+                               ("Content-Type", typ), ("Content-Length", str(groesse))):
                 verbindung.putheader(name, wert)
             verbindung.endheaders()
-            self.assertEqual(verbindung.getresponse().status, 413, pfad)
+            antwort = verbindung.getresponse()
+            self.assertEqual(antwort.status, 413, pfad)
+            self.assertIn("zu groß", json.loads(antwort.read().decode("utf-8"))["fehler"])
             verbindung.close()
+        # Genau an der Grenze wird gelesen (ein Körper in der erlaubten Größe).
+        gerade = json.dumps({"fall": None, "argv": ["fall", "liste"]})
+        self.assertEqual(self.http("POST", "/api/befehl", gerade, kopf)[0], 200)
 
 
 class Befehle(WebTest):
     def test_befehl_liefert_code_ausgabe_und_deutschen_fehler(self):
         ergebnis = self.befehl_ok(["fall", "neu", "t", "--titel=Testfall", "--auftrag=Prüfen"], fall=None)
         self.assertIn("angelegt: t", ergebnis["aus"])
-        ergebnis = self.befehl_ok(["fall", "zeigen"])
-        self.assertIn("Testfall", ergebnis["aus"])
+        ergebnis = self.befehl_ok(["fall", "setzen", "--titel=Neuer Titel"])
+        self.assertIn("geändert: titel", ergebnis["aus"])
         self.assertEqual(ergebnis["fehler"], "")
+        self.assertEqual(self.export_http()["fall"]["titel"], "Neuer Titel")
+        self.assertIn("t | Neuer Titel", self.befehl_ok(["fall", "liste"], fall=None)["aus"])
         status, ergebnis = self.befehl(["hypothese", "status", "H99", "offen", "--vermerk=x"])
         self.assertEqual((status, ergebnis["code"]), (200, 1))
         self.assertIn("fehler: unbekannt: H99", ergebnis["fehler"])
@@ -205,6 +219,10 @@ class Befehle(WebTest):
             ["export", "--datei", ziel], ["export", "--datei=" + ziel], ["export", "--dat", ziel],
             ["dossier", "--ziel", self.wurzel], ["dossier", "--ziel=" + self.wurzel], ["dossier", "--zi", self.wurzel],
             ["--fall", "t", "fall", "zeigen"],
+            ["quelle", "--", "datei", "/etc/passwd", "--titel=x"],
+            ["fall", "--", "laden", ziel],
+            ["fall", "--", "sichern"],
+            ["--", "quelle", "datei", "/etc/passwd", "--titel=x"],
         ]
         for argv in verboten:
             status, ergebnis = self.befehl(argv)
@@ -214,8 +232,8 @@ class Befehle(WebTest):
         self.assertEqual(sorted(os.listdir(self.wurzel)), vorher)  # kein Zip, kein Dossier, kein Export
         self.assertEqual(os.listdir(os.path.join(self.wurzel, "t")).count("dossier.html"), 0)
         # Gewöhnliche Befehle laufen weiter, auch mit ähnlichen Optionen.
-        self.befehl_ok(["export"])
-        self.befehl_ok(["fall", "zeigen"])
+        self.befehl_ok(["quelle", "lesen", "Q1", "--suche=nicht"])
+        self.befehl_ok(["fall", "liste"], fall=None)
 
     def test_zitat_von_stdin_mit_sonderzeichen(self):
         self.fall_mit_quelle()
@@ -293,7 +311,7 @@ class Dateien(WebTest):
         self.assertIn("Fall existiert bereits", json.loads(daten.decode("utf-8"))["fehler"])
         shutil.rmtree(os.path.join(self.wurzel, "t"))
         status, _, daten = self.http("POST", "/api/laden", zip_bytes, {"Content-Type": "application/octet-stream"})
-        self.assertEqual((status, json.loads(daten.decode("utf-8"))), (200, {"slug": "t"}))
+        self.assertEqual((status, json.loads(daten.decode("utf-8"))), (200, {"slug": "t", "zurueckgesetzt": []}))
         nachher = self.export_http()
         for d in (vorher, nachher):
             d["fall"].pop("stand")
@@ -310,7 +328,7 @@ class Dateien(WebTest):
         pfad = web.exportiere("t", ziel)
         self.assertTrue(os.path.isfile(pfad) and pfad.endswith(".zip"))
         shutil.rmtree(os.path.join(self.wurzel, "t"))
-        self.assertEqual(web.importiere(pfad), "t")
+        self.assertEqual(web.importiere(pfad), "Akte geladen: t")
         self.assertEqual(self.export_http()["quellen"][0]["titel"], "Quelle Eins")
         with self.assertRaises(web.Fehler):
             web.importiere(pfad)
@@ -409,6 +427,209 @@ class Eingaben(WebTest):
         self.assertEqual(self.http("POST", "/api/nichts", "{}", {"Content-Type": "application/json"})[0], 405)
 
 
+class Befehlspruefung(WebTest):
+    """Geprüft wird, was der Parser verstanden hat, nicht die Rohliste."""
+
+    def test_umgehungen_ueber_das_trennzeichen(self):
+        self.fall_mit_quelle()
+        archiv = self.gesichertes_archiv("t")
+        vorher = sorted(os.listdir(self.wurzel))
+        folgen = (["quelle", "--", "datei", "/etc/hostname", "--titel=x"],
+                  ["fall", "--", "laden", archiv],
+                  ["fall", "--", "sichern"])
+        for argv in folgen:
+            status, ergebnis = self.befehl(argv)
+            self.assertEqual(status, 403, argv)
+            self.assertNotEqual(ergebnis["code"], 0, argv)
+            self.assertIn("--", ergebnis["fehler"], argv)
+        self.assertEqual(sorted(os.listdir(self.wurzel)), vorher)  # kein Zip, kein Fall
+        self.assertEqual(len(self.export_http()["quellen"]), 1)
+        # Auch ohne die Rohprüfung scheitert die zweite Stufe an der geparsten Namespace.
+        pruefer = web._pruefer("t", "tester")
+        for argv in folgen:
+            with self.assertRaises(web.Anfragefehler) as fehler:
+                web._lauf(["--wer=tester", "--fall=t"] + argv, None, pruefer)
+            self.assertEqual(fehler.exception.status, 403, argv)
+        self.assertEqual(sorted(os.listdir(self.wurzel)), vorher)
+        self.assertEqual(len(self.export_http()["quellen"]), 1)
+
+    def test_abkuerzungen_und_nicht_erlaubte_paare_in_der_zweiten_stufe(self):
+        self.fall_mit_quelle()
+        pfad = os.path.join(self.wurzel, "..", "raus-%d" % os.getpid())
+        self.addCleanup(lambda: os.path.exists(pfad) and shutil.rmtree(pfad, True))
+        pruefer = web._pruefer("t", "tester")
+        for argv in (["export", "--dat", pfad], ["export", "--datei=" + pfad], ["dossier", "--zi", pfad],
+                     ["dossier", "--ziel", pfad], ["pruefe"], ["fall", "sichern", "--zi", pfad],
+                     ["quelle", "dat", pfad, "--titel=x"]):
+            try:
+                ergebnis = web._lauf(["--wer=tester", "--fall=t"] + argv, None, pruefer)
+            except web.Anfragefehler as fehler:
+                self.assertEqual(fehler.status, 403, argv)
+            else:  # der Parser selbst lehnt es ab (unbekannter Befehl oder Option)
+                self.assertEqual(ergebnis["code"], 2, argv)
+        self.assertFalse(os.path.exists(pfad))
+        self.assertEqual(sorted(os.listdir(self.wurzel)), ["t"])
+
+    def test_fall_und_wer_muessen_die_der_oberflaeche_sein(self):
+        self.fall_mit_quelle()
+        pruefer = web._pruefer("t", "tester")
+        for vorspann in (["--wer=anders", "--fall=t"], ["--wer=tester", "--fall=u"], ["--wer=tester"], ["--fall=t"]):
+            with self.assertRaises(web.Anfragefehler):
+                web._lauf(vorspann + ["hypothese", "neu", "--text=x"], None, pruefer)
+        self.assertEqual(self.export_http()["hypothesen"], [])
+        ergebnis = web._lauf(["--wer=tester", "--fall=t", "hypothese", "neu", "--text=x"], None, pruefer)
+        self.assertEqual(ergebnis["code"], 0)
+
+    def test_nur_die_liste_der_seite_ist_erlaubt(self):
+        self.fall_mit_quelle()
+        for argv in (["fall", "zeigen"], ["export"], ["pruefe"], ["dossier"], ["quelle", "zeigen", "Q1"],
+                     ["quelle", "liste"], ["beleg", "zeigen", "B1"], ["beleg", "setzen", "B1", "--aussage=x"],
+                     ["behauptung", "zeigen", "A1"], ["behauptung", "liste"], ["hypothese", "liste"],
+                     ["frage", "liste"], ["akteur", "liste"]):
+            status, ergebnis = self.befehl(argv)
+            self.assertEqual(status, 403, argv)
+            self.assertIn("nicht erlaubt", ergebnis["fehler"])
+        # Jedes Paar der Liste ist ein wirklicher Befehl (-h endet mit Code 0, ein unbekannter mit 2).
+        for bereich, aktion in sorted(web.ERLAUBT):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as ende:
+                    web.cli.baue_parser().parse_args([bereich, aktion, "-h"])
+            self.assertEqual(ende.exception.code, 0, (bereich, aktion))
+        self.assertEqual(len(web.ERLAUBT), 25)
+
+    def test_seite_und_liste_laufen_nicht_auseinander(self):
+        html = (REPO / "recherche" / "web_ui.html").read_text(encoding="utf-8")
+        bereiche = "fall|hypothese|frage|suche|quelle|beleg|behauptung|akteur|beziehung|ereignis|konfrontation|pruefe|export|dossier"
+        gesendet = set(re.findall(r"\['(%s)', '([a-z-]+)'" % bereiche, html))
+        self.assertGreaterEqual(len(gesendet), 20)
+        self.assertLessEqual(gesendet, web.ERLAUBT, gesendet - web.ERLAUBT)
+
+    def test_name_und_titel_mit_bindestrich_am_anfang(self):
+        self.befehl_ok(["fall", "neu", "t", "--titel=Testfall", "--auftrag=Prüfen"], fall=None, wer="-ki")
+        self.befehl_ok(["hypothese", "neu", "--text=Eine Hypothese"], wer="-ki")
+        self.befehl_ok(["hypothese", "neu", "--text=Noch eine"], wer="--help")
+        self.assertEqual({w for _a, _o, w in self.protokoll()}, {"-ki", "--help"})
+        inhalt = "Ein hochgeladenes Protokoll. Der Zeuge sagte klar und deutlich etwas.".encode("utf-8")
+        status, _, daten = self.http("POST", "/api/quelle-datei?fall=t&titel=-Titel&name=-datei.txt&wer=-ki&typ=blog",
+                                     inhalt, {"Content-Type": "application/octet-stream"})
+        ergebnis = json.loads(daten.decode("utf-8"))
+        self.assertEqual((status, ergebnis["code"]), (200, 0), ergebnis)
+        self.assertEqual(self.export_http()["quellen"][0]["titel"], "-Titel")
+
+
+class AkteLadenWeb(WebTest):
+    def test_status_ueber_der_obergrenze_wird_ueber_laden_zurueckgesetzt(self):
+        archiv = self.manipulierte_akte()
+        with open(archiv, "rb") as datei:
+            roh = datei.read()
+        status, _, daten = self.http("POST", "/api/laden", roh, {"Content-Type": "application/octet-stream"})
+        self.assertEqual((status, json.loads(daten.decode("utf-8"))), (200, {"slug": "t", "zurueckgesetzt": ["A1"]}))
+        a = self.export_http()["behauptungen"][0]
+        self.assertEqual(a["status"], "ungeprueft")
+        self.assertIn(("behauptung zurueckgesetzt", "A1"), [(x, o) for x, o, _ in self.protokoll()])
+        self.assertIn(("fall laden", "t"), [(x, o) for x, o, _ in self.protokoll()])
+        # Dieselbe Akte über die Python-Funktion der Hülle: Text für den Nutzer.
+        shutil.rmtree(os.path.join(self.wurzel, "t"))
+        self.assertEqual(web.importiere(archiv), "Akte geladen: t (1 Prüfung zurückgesetzt: A1)")
+        self.assertEqual(self.export_http()["behauptungen"][0]["status"], "ungeprueft")
+
+    def test_beschaedigtes_archiv_ist_400_und_hinterlaesst_nichts(self):
+        self.fall_mit_quelle()
+        archiv = self.gesichertes_archiv("t")
+        shutil.rmtree(os.path.join(self.wurzel, "t"))
+        with zipfile_offen(archiv) as z:
+            db = z.read("t/fall.db")
+        kaputt = os.path.join(tempfile.mkdtemp(), "a.zip")
+        self.addCleanup(shutil.rmtree, os.path.dirname(kaputt), True)
+        import zipfile
+        with zipfile.ZipFile(kaputt, "w", zipfile.ZIP_STORED) as z:
+            z.writestr("t/fall.db", db)
+            z.writestr("t/quellen/Q1/text.txt", b"a" * 64)
+        with open(kaputt, "rb") as datei:
+            roh = datei.read()
+        stelle = roh.index(b"a" * 64)
+        roh = roh[:stelle + 5] + b"b" + roh[stelle + 6:]
+        status, _, daten = self.http("POST", "/api/laden", roh, {"Content-Type": "application/octet-stream"})
+        self.assertEqual(status, 400)
+        self.assertIn("beschädigt", json.loads(daten.decode("utf-8"))["fehler"])
+        self.assertEqual(os.listdir(self.wurzel), [])
+
+
+def zipfile_offen(pfad):
+    import zipfile
+    return zipfile.ZipFile(pfad)
+
+
+class Zeitgrenze(WebTest):
+    def test_stumme_verbindung_wird_geschlossen(self):
+        self.assertEqual(web._Handler.timeout, 30)
+        with mock.patch.object(web._Handler, "timeout", 0.5):
+            stumm = socket.create_connection(("127.0.0.1", self.port), timeout=10)
+            halb = socket.create_connection(("127.0.0.1", self.port), timeout=10)
+            halb.sendall(b"GET /api/faelle HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n" % self.port)  # nie beendet
+            beginn = time.time()
+            self.assertEqual(stumm.recv(100), b"")
+            self.assertEqual(halb.recv(100), b"")
+            self.assertLess(time.time() - beginn, 5)
+            stumm.close()
+            halb.close()
+        status, _, _ = self.http("GET", "/api/faelle")  # der Server arbeitet weiter
+        self.assertEqual(status, 200)
+
+
+class Loeschen(WebTest):
+    def loeschen(self, fall, bestaetigung, **kopf):
+        koerper = json.dumps({"fall": fall, "bestaetigung": bestaetigung})
+        status, _, daten = self.http("POST", "/api/loeschen", koerper, dict({"Content-Type": "application/json"}, **kopf))
+        return status, json.loads(daten.decode("utf-8"))
+
+    def zwei_faelle(self):
+        self.fall_mit_quelle()
+        self.befehl_ok(["fall", "neu", "u", "--titel=Zweiter", "--auftrag=x"], fall=None)
+
+    def test_falsche_bestaetigung_loescht_nichts(self):
+        self.zwei_faelle()
+        for bestaetigung in ("u", "T", " t", "t ", "", None, 5, ["t"]):
+            status, antwort = self.loeschen("t", bestaetigung)
+            self.assertEqual(status, 400, bestaetigung)
+            self.assertIn("nichts wurde gelöscht", antwort["fehler"])
+        self.assertEqual(sorted(os.listdir(self.wurzel)), ["t", "u"])
+        self.assertEqual(len(self.export_http()["quellen"]), 1)
+
+    def test_richtige_bestaetigung_entfernt_nur_diesen_fall(self):
+        self.zwei_faelle()
+        status, antwort = self.loeschen("t", "t")
+        self.assertEqual((status, antwort), (200, {"geloescht": "t"}))
+        self.assertEqual(os.listdir(self.wurzel), ["u"])  # auch keine .loeschen-Reste
+        self.assertEqual(json.loads(self.http("GET", "/api/faelle")[2]), [{"slug": "u", "titel": "Zweiter"}])
+        self.assertEqual(self.http("GET", "/api/export?fall=t")[0], 404)
+        self.assertEqual(self.loeschen("t", "t")[0], 404)  # nicht mehr vorhanden
+
+    def test_kein_vorhandener_fall_wird_abgelehnt(self):
+        self.zwei_faelle()
+        os.mkdir(os.path.join(self.wurzel, "kein-fall"))  # Verzeichnis ohne fall.db
+        for slug in ("kein-fall", "gibtsnicht", "../t", "..", "T", "", None, "t/../u"):
+            status, _ = self.loeschen(slug, slug)
+            self.assertIn(status, (400, 404), slug)
+        self.assertEqual(sorted(os.listdir(self.wurzel)), ["kein-fall", "t", "u"])
+
+    def test_nicht_ueber_befehl_und_nicht_ohne_token(self):
+        self.zwei_faelle()
+        for argv in (["fall", "loeschen", "t"], ["fall", "entfernen", "t"], ["fall", "--", "loeschen", "t"]):
+            status, ergebnis = self.befehl(argv)
+            self.assertIn(status, (200, 403))
+            self.assertNotEqual(ergebnis["code"], 0, argv)  # unbekannter Befehl, Parser lehnt ab
+        koerper = json.dumps({"fall": "t", "bestaetigung": "t"})
+        status, _, _ = self.http("POST", "/api/loeschen", koerper, {"Content-Type": "application/json"}, angemeldet=False)
+        self.assertEqual(status, 403)
+        status, _, _ = self.http("POST", "/api/loeschen", koerper, {"Content-Type": "text/plain"})
+        self.assertEqual(status, 415)
+        status, _, _ = self.http("POST", "/api/loeschen", koerper,
+                                 {"Content-Type": "application/json", "Origin": "http://evil.example"})
+        self.assertEqual(status, 403)
+        self.assertEqual(sorted(os.listdir(self.wurzel)), ["t", "u"])
+
+
 class Hintergrund(unittest.TestCase):
     def test_starte_im_hintergrund_liefert_denselben_server(self):
         import tempfile
@@ -459,6 +680,26 @@ class Seite(unittest.TestCase):
         self.assertIn("sandbox: 'allow-popups allow-popups-to-escape-sandbox'", self.html)
         self.assertNotIn("allow-scripts", self.html)
         self.assertNotIn("allow-same-origin", self.html)
+
+    def test_dom_ids_und_bruecke_sind_geschuetzt(self):
+        self.assertIn("typeof window.Android.oeffneExtern === 'function'", self.html)
+        self.assertIn("/^[A-Z]\\d+$/", self.html)
+        self.assertIsNone(re.search(r"\bid:\s*[a-z]+\.id\b", self.html))  # nie eine ID aus der Akte ungeprüft
+
+    def test_bereit_signal_genau_einmal(self):
+        self.assertEqual(self.html.count("console.info('recherche: oberflaeche bereit')"), 1)
+        self.assertIn("if (!S.bereit)", self.html)
+
+    def test_android_knoepfe_beider_varianten(self):
+        for name in ("speichern", "dossierSpeichern", "exportieren", "dossierTeilen"):
+            self.assertIn("'%s'" % name, self.html)
+        for beschriftung in ("Akte sichern (Datei)", "Akte teilen", "Dossier speichern", "Dossier teilen",
+                             "Akte sichern (Zip)", "Dossier teilen / speichern"):
+            self.assertIn(beschriftung, self.html)
+
+    def test_loeschen_nur_ueber_den_eigenen_weg(self):
+        self.assertIn("/api/loeschen", self.html)
+        self.assertNotIn("'loeschen'", self.html)  # kein Befehl der Kommandozeile
 
     def test_android_bruecke_und_neuladen(self):
         for name in ("importieren", "exportieren", "dossierTeilen", "oeffneExtern", "neuLaden"):

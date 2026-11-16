@@ -25,13 +25,19 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.13 ist das Python der App, 3.9 das älteste, das die README zusagt.
+        python: ["3.9", "3.13"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python }}
       # Dieselbe Version wie in der App; die PDF-Tests werden ohne pypdf übersprungen.
       - name: pypdf in der Version der App installieren
+        if: matrix.python == '3.13'
         run: |
           ver=$(grep -oP "pypdf==\K[0-9][0-9A-Za-z.]*" android/app/build.gradle)
           if [ -z "$ver" ]; then echo "Keine pypdf-Version in android/app/build.gradle"; exit 1; fi
@@ -116,7 +122,8 @@ jobs:
           if-no-files-found: warn
 
   veroeffentlichen:
-    needs: [apk, starttest]
+    # Auch die Tests: Ohne sie ginge eine APK hinaus, deren Regeln ein Test als kaputt meldet.
+    needs: [tests, apk, starttest]
     if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/ccr-f03ca82c-8hm3p9' || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10

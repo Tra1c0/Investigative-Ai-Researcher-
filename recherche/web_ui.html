@@ -148,7 +148,13 @@ try { S.wer = localStorage.getItem('recherche.wer') || 'nutzer'; } catch (e) { /
 
 const lab = (w) => (w in LABEL ? LABEL[w] : (w || ''));
 const kurz = (t, n) => { t = String(t || '').replace(/\s+/g, ' ').trim(); n = n || 80; return t.length > n ? t.slice(0, n - 1) + '…' : t; };
-const android = () => (window.Android && typeof window.Android === 'object' ? window.Android : null);
+// Die Brücke der Android-Hülle; nur wenn sie wirklich eine ist (ein Fall mit einer ID wie „Android“ darf
+// sie nicht vortäuschen).
+const android = () => (window.Android && typeof window.Android.oeffneExtern === 'function' ? window.Android : null);
+const bruecke = (name) => { const A = android(); return A && typeof A[name] === 'function' ? A : null; };
+// IDs aus der Akte werden nur dann DOM-IDs, wenn sie die Form des Werkzeugs haben; sonst könnten sie
+// Elemente der Seite oder window.Android überdecken.
+const domId = (id) => (/^[A-Z]\d+$/.test(id || '') ? id : null);
 const heute = () => new Date().toISOString().slice(0, 10);
 
 // ===========================================================================
@@ -400,6 +406,7 @@ async function render(behalteScroll) {
       if (nr !== zeichnung) return;
       fuelle(app, seiteFall(r));
     }
+    if (!S.bereit) { S.bereit = true; console.info('recherche: oberflaeche bereit'); }
   } catch (e) {
     S.slug = null; S.fall = null; S.idx = null;
     app.replaceChildren(el('h1', {text: 'Das ging nicht'}), el('div', {class: 'fehler', role: 'alert', text: e.message}),
@@ -474,10 +481,12 @@ function ladenBereich() {
   }
   return formular([{name: 'datei', label: 'Zip-Datei einer gesicherten Akte', typ: 'datei', akzeptiert: '.zip,application/zip'}], {
     knopf: 'Akte laden',
+    erfolg: async (res) => { S.meldung = {art: 'ok', text: text(res)}; S.meldungBleibt = true; await render(true); },
     senden: async (v) => {
       if (!v.datei) return {code: 1, aus: '', fehler: 'Keine Datei gewählt.'};
       const d = await postBytes('/api/laden', v.datei);
-      return {code: 0, aus: 'geladen: ' + d.slug, fehler: ''};
+      const zur = d.zurueckgesetzt || [];
+      return {code: 0, aus: 'Akte geladen: ' + d.slug + (zur.length ? '. Prüfung zurückgesetzt bei ' + zur.join(', ') + ': Die Belege tragen den gespeicherten Status nicht.' : ''), fehler: ''};
     }
   });
 }
@@ -575,26 +584,53 @@ function ueberblick() {
     el('h2', {text: 'Aktionen'}),
     el('div', {class: 'zeile'},
       interner(hash('f', S.slug, 'dossier'), 'Dossier anzeigen', 'knopf primaer'),
-      sichernKnopf(), dossierKnopf()));
+      sichernKnopf(), dossierKnopf()),
+    aufklapp('fall-loeschen', 'Fall löschen', loeschBereich()));
 }
 
+function androidKnopf(titel, name) {
+  return el('button', {type: 'button', class: 'knopf', text: titel, onclick: () => {
+    try { android()[name](S.slug); } catch (e) { S.meldung = {art: 'fehler', text: e.message}; render(true); }
+  }});
+}
 function sichernKnopf() {
   if (android()) {
-    return el('button', {type: 'button', class: 'knopf', text: 'Akte sichern (Zip)', onclick: () => {
-      try { android().exportieren(S.slug); } catch (e) { S.meldung = {art: 'fehler', text: e.message}; render(true); }
-    }});
+    // Neuere Hüllen können speichern (Dateidialog) und teilen; ältere nur teilen.
+    if (bruecke('speichern')) return [androidKnopf('Akte sichern (Datei)', 'speichern'), androidKnopf('Akte teilen', 'exportieren')];
+    return androidKnopf('Akte sichern (Zip)', 'exportieren');
   }
   return el('a', {class: 'knopf', href: '/api/sichern?fall=' + encodeURIComponent(S.slug), download: S.slug + '.zip',
     target: '_blank', rel: 'noopener noreferrer', text: 'Akte sichern (Zip)'});
 }
 function dossierKnopf() {
   if (android()) {
-    return el('button', {type: 'button', class: 'knopf', text: 'Dossier teilen / speichern', onclick: () => {
-      try { android().dossierTeilen(S.slug); } catch (e) { S.meldung = {art: 'fehler', text: e.message}; render(true); }
-    }});
+    if (bruecke('dossierSpeichern')) return [androidKnopf('Dossier speichern', 'dossierSpeichern'), androidKnopf('Dossier teilen', 'dossierTeilen')];
+    return androidKnopf('Dossier teilen / speichern', 'dossierTeilen');
   }
   return el('a', {class: 'knopf', href: '/api/dossier?fall=' + encodeURIComponent(S.slug), download: 'dossier-' + S.slug + '.html',
     target: '_blank', rel: 'noopener noreferrer', text: 'Dossier speichern (HTML)'});
+}
+
+// Löschen: nur hier, nie über die Kommandozeile der Akte. Die Bestätigung ist der Kurzname.
+function loeschBereich() {
+  return el('div', {},
+    el('div', {class: 'warnung', text: 'Das entfernt den Fall mit allen gesicherten Quellen endgültig von diesem Gerät. Vorher die Akte sichern; nur mit der Sicherung lässt sie sich wiederherstellen.'}),
+    formular([{name: 'bestaetigung', label: 'Zur Bestätigung den Kurznamen des Falls eingeben: ' + S.slug}], {
+      knopf: 'Fall endgültig löschen', key: 'fall-loeschen',
+      senden: async (v) => {
+        const r = await holen('/api/loeschen', {method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({fall: S.slug, bestaetigung: v.bestaetigung.trim()})});
+        let d = null;
+        try { d = await r.json(); } catch (e) { /* kein JSON */ }
+        if (!r.ok) return {code: 1, aus: '', fehler: (d && d.fehler) || ('Fehler ' + r.status)};
+        return {code: 0, aus: 'Fall gelöscht: ' + d.geloescht, fehler: ''};
+      },
+      erfolg: async (res) => {
+        S.meldung = {art: 'ok', text: text(res)}; S.meldungBleibt = true;
+        S.fall = null; S.slug = null; S.idx = null;
+        if (location.hash !== '#/') location.hash = '#/'; else await render(false);
+      }
+    }));
 }
 
 // ===========================================================================
@@ -603,7 +639,7 @@ function dossierKnopf() {
 
 function ansichtHypothesen() {
   const d = S.fall;
-  const karten = d.hypothesen.map((h) => el('div', {class: 'karte', id: h.id},
+  const karten = d.hypothesen.map((h) => el('div', {class: 'karte', id: domId(h.id)},
     el('h3', {}, h.id + ' ', badge(h.status)), p(h.text),
     h.prueft.length ? el('div', {}, strong('Prüft: '), el('ul', {class: 'liste'}, h.prueft.map((x) => el('li', {text: x})))) : null,
     h.widerlegt.length ? el('div', {}, strong('Würde widerlegt durch: '), el('ul', {class: 'liste'}, h.widerlegt.map((x) => el('li', {text: x})))) : null,
@@ -632,7 +668,7 @@ const zeilen = (t) => String(t || '').split('\n').map((x) => x.trim()).filter((x
 // ===========================================================================
 
 function frageKarte(f) {
-  return el('div', {class: 'karte', id: f.id},
+  return el('div', {class: 'karte', id: domId(f.id)},
     el('h3', {}, f.id + ' ', badge(f.status), f.mensch ? marke('Mensch') : null), p(f.text),
     f.hypothese ? p('Hypothese: ' + f.hypothese, 'muted klein') : null,
     f.plan ? p('Plan: ' + f.plan, 'muted') : null,
@@ -947,7 +983,7 @@ function belegBlock(bid, claimId) {
   const b = S.idx.b[bid];
   if (!b) return el('div', {class: 'beleg', text: bid + ' (unbekannt)'});
   const x = S.idx.q[b.quelle];
-  return el('div', {class: 'beleg', id: claimId ? null : b.id},
+  return el('div', {class: 'beleg', id: claimId ? null : domId(b.id)},
     el('div', {}, strong(b.id), b.direkt ? ' · Primärbeleg' : '', ' · Stelle ' + b.stelle),
     el('blockquote', {text: b.zitat}),
     b.zitat_ok === false ? el('div', {class: 'warnung', text: 'Achtung: Das Zitat wird im gespeicherten Text der Quelle nicht mehr gefunden.'}) : null,
@@ -975,7 +1011,10 @@ function behauptungKarte(c) {
   const d = S.fall;
   const aus = c.aus.map((id) => (S.idx.a[id] ? id + ' (' + lab(S.idx.a[id].status) + ')' : id)).join(', ');
   const betrifft = c.betrifft.map((id) => (S.idx.p[id] ? S.idx.p[id].name : id)).join(', ');
-  const zeigeGrenze = c.status === 'ungeprueft' || ({ungeprueft: 1, unbestaetigt: 2, gestuetzt: 3, belegt: 4}[c.status] || 99) < ({ungeprueft: 1, unbestaetigt: 2, gestuetzt: 3, belegt: 4}[c.obergrenze] || 0);
+  const STAERKE = {ungeprueft: 1, unbestaetigt: 2, gestuetzt: 3, belegt: 4};
+  const stufe = STAERKE[c.status], grenzstufe = STAERKE[c.obergrenze];
+  const ueberGrenze = stufe !== undefined && grenzstufe !== undefined && stufe > grenzstufe;
+  const zeigeGrenze = c.status === 'ungeprueft' || (stufe !== undefined && grenzstufe !== undefined && stufe < grenzstufe) || ueberGrenze;
   const grenze = 'Obergrenze: ' + lab(c.obergrenze) + ' (' + c.obergrenze_grund + ')';
 
   const bearbeiten = formular([
@@ -1009,11 +1048,11 @@ function behauptungKarte(c) {
       {name: 'pruefer', label: 'Prüfer', wert: c.pruefer || S.wer, hinweis: 'Geprüft werden soll unabhängig von der Sammlung.'}
     ], {key: 'a-pruef-' + c.id, senden: (v) => befehl(['behauptung', 'pruefen', c.id, opt('status', v.status), opt('vermerk', v.vermerk), opt('pruefer', v.pruefer)])}));
 
-  return el('div', {class: 'karte', id: c.id},
+  return el('div', {class: 'karte', id: domId(c.id)},
     el('h4', {}, c.id + ' ', badge(c.status, lab(c.status) + (c.zuschreibung ? ' (Zuschreibung)' : '')), marke(lab(c.art)),
       c.belastend ? marke('belastend') : null, c.zuschreibung ? marke('Zuschreibung') : null),
     p(c.text),
-    zeigeGrenze ? el('div', {class: 'warnung', text: grenze}) : null,
+    ueberGrenze ? el('div', {class: 'warnung', role: 'alert', text: 'Achtung: Der Status liegt über der Obergrenze, die die Belege tragen. ' + grenze}) : (zeigeGrenze ? el('div', {class: 'warnung', text: grenze}) : null),
     c.geprueft ? p('Prüfung: ' + c.geprueft + ' von ' + c.pruefer + (c.vermerk ? ' · ' + c.vermerk : ''), 'muted klein') : null,
     c.klaerung ? p('Klärung: ' + c.klaerung, 'klein') : null,
     aus ? p('Beruht auf: ' + aus, 'klein') : null,
@@ -1082,7 +1121,7 @@ function ansichtAkteure() {
     if (v.trotzdem) argv.push('--trotzdem');
     return befehl(argv);
   }});
-  const karten = d.akteure.map((a) => el('div', {class: 'karte', id: a.id},
+  const karten = d.akteure.map((a) => el('div', {class: 'karte', id: domId(a.id)},
     el('h3', {}, a.id + ' · ' + a.name), el('div', {}, marke(lab(a.art)), marke(lab(a.kategorie))),
     Object.keys(a.kennungen || {}).length ? p(Object.keys(a.kennungen).map((k) => k + ': ' + a.kennungen[k]).join(' · '), 'klein') : null,
     a.notiz ? p(a.notiz) : null,
@@ -1099,7 +1138,7 @@ function ansichtAkteure() {
       return befehl(argv);
     }}))));
 
-  const beziehungen = d.beziehungen.map((r) => el('div', {class: 'karte', id: r.id},
+  const beziehungen = d.beziehungen.map((r) => el('div', {class: 'karte', id: domId(r.id)},
     strong(r.id + ' '), name(r.von) + ' — ' + r.art + ' → ' + name(r.zu),
     (r.von_datum || r.bis_datum) ? p((r.von_datum || '?') + ' bis ' + (r.bis_datum || 'heute/offen'), 'muted klein') : null,
     p('Belege: ' + (r.belege.join(', ') || '-'), 'muted klein')));
@@ -1134,7 +1173,7 @@ function ansichtAkteure() {
     el('h2', {text: 'Beziehungen'}), beziehungen.length ? beziehungen : p('Noch keine Beziehung.', 'muted'),
     aufklapp('r-neu', 'Beziehung hinzufügen', beziehungNeu),
     el('h2', {text: 'Chronologie'}),
-    ereignisse.length ? ereignisse.map((e) => el('div', {class: 'karte', id: e.id},
+    ereignisse.length ? ereignisse.map((e) => el('div', {class: 'karte', id: domId(e.id)},
       strong((e.datum || 'ohne Datum') + ' '), e.text,
       p([e.id, e.akteure.length ? 'Akteure: ' + e.akteure.map(name).join(', ') : '', 'Belege: ' + e.belege.join(', ')].filter((t) => t).join(' · '), 'muted klein')))
       : p('Noch kein Ereignis.', 'muted'),
@@ -1182,7 +1221,7 @@ function ansichtKonfrontation() {
         {name: 'vermerk', label: 'Vermerk (z. B. Frist verstrichen, Nachfrage am …)', typ: 'area'}
       ], {key: 'k-keine-' + k.id, senden: (v) => befehl(['konfrontation', 'keine-antwort', k.id, opt('vermerk', v.vermerk)])})));
     }
-    return el('div', {class: 'karte', id: k.id},
+    return el('div', {class: 'karte', id: domId(k.id)},
       el('h4', {}, k.id + ' ', badge(k.status)), p(k.frage),
       k.zu.length ? p('Zu: ' + k.zu.join(', '), 'muted klein') : null,
       k.gesendet_am ? p('Gesendet am ' + k.gesendet_am + (k.frist ? ', Frist ' + k.frist : ''), 'klein') : null,

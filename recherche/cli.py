@@ -13,7 +13,7 @@ from . import bewertung
 from . import quellen as q
 from .store import (BEHAUPTUNGS_ARTEN, FRAGEN_STATUS, HYPOTHESEN_STATUS, KATEGORIEN,
                     QUELLEN_TYPEN, RICHTUNGEN, ZUVERLAESSIGKEIT, Fall, Fehler, Nutzungsfehler,
-                    aktiver_slug, faelle_liste, faelle_wurzel, jetzt, lade_fall, namensschluessel,
+                    aktiver_slug, faelle_liste, faelle_wurzel, jetzt, namensschluessel,
                     pflicht, sichere_fall,
                     pruefe_datum, teile_liste, zu_dict, zu_liste)
 
@@ -125,13 +125,9 @@ def fall_sichern(args):
 
 
 def fall_laden(args):
-    wurzel = faelle_wurzel()
-    slug = lade_fall(wurzel, args.pfad)
-    fall = Fall.oeffnen(wurzel, slug, _wer(args))
-    fall.conn.execute("PRAGMA journal_mode=WAL")
-    with fall.schreiben():
-        fall.log("fall laden", slug, str(args.pfad))
-    _zeigen("geladen: " + slug)
+    slug, zurueck = bewertung.lade_akte(faelle_wurzel(), args.pfad, _wer(args), str(args.pfad))
+    _zeigen("geladen: " + slug,
+            *("hinweis: Prüfung zurückgesetzt: %s (%s)" % (aid, grund) for aid, grund in zurueck))
 
 
 OBJEKT_TABELLEN = (("Hypothesen", "hypothese"), ("Fragen", "frage"), ("Suchen", "suche"),
@@ -1175,7 +1171,12 @@ def main(argv=None):
     for strom in (sys.stdin, sys.stdout, sys.stderr):
         if hasattr(strom, "reconfigure"):
             strom.reconfigure(encoding="utf-8")
-    args = baue_parser().parse_args(argv)
+    return fuehre_aus(baue_parser().parse_args(argv))
+
+
+def fuehre_aus(args):
+    """Führt den geparsten Befehl aus. Getrennt von `main`, damit die Weboberfläche genau
+    die Namespace ausführt, die sie vorher geprüft hat."""
     try:
         return args.funktion(args) or 0
     except Fehler as fehler:

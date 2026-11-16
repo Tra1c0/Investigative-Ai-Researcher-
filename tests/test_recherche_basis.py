@@ -2,6 +2,8 @@
 
 import json
 import os
+import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -163,3 +165,42 @@ class FallTest(unittest.TestCase):
     def status(self, aid):
         zeile = self.ok("behauptung", "zeigen", aid).zeilen[0]
         return zeile.split("status ")[1]
+
+
+class ArchivHilfen:
+    """Mixin für FallTest: gesicherte Akten bauen, auch solche mit unzulässigem Status."""
+
+    def gesichertes_archiv(self, slug):
+        """Sichert den Fall in ein neues Verzeichnis außerhalb der Fälle und gibt den Zip-Pfad zurück."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.ok("--fall", slug, "fall", "sichern", "--ziel", tmp.name)
+        return os.path.join(tmp.name, [n for n in os.listdir(tmp.name) if n.endswith(".zip")][0])
+
+    def setze_status(self, aid, status, slug="t"):
+        """Schreibt einen Status an den Regeln vorbei in die Datenbank (wie ein manipuliertes Archiv)."""
+        db = sqlite3.connect(os.path.join(self.wurzel, slug, "fall.db"))
+        with db:
+            db.execute("UPDATE behauptung SET status = ?, pruefer = 'x', geprueft = '2026-01-01T00:00:00Z' "
+                       "WHERE id = ?", (status, aid))
+        db.close()
+
+    def manipulierte_akte(self):
+        """Quelle mit Zuverlässigkeit E, ein Zitat, eine Tatsachenbehauptung mit Status belegt in
+        der Datenbank, gesichert und aus den Fällen entfernt. Gibt den Zip-Pfad zurück."""
+        self.neuer_fall("t")
+        qid = self.quelle("Er sagte klar und deutlich: Das ist belegt genug, wirklich. Mehr nicht.",
+                          typ="medium", zuv="E")
+        bid = self.beleg(qid, "Das ist belegt genug, wirklich.")
+        aid = self.behauptung("Eine Tatsache", "tatsache", "--pro", bid)
+        self.assertEqual((qid, bid, aid), ("Q1", "B1", "A1"))
+        self.setze_status(aid, "belegt")
+        archiv = self.gesichertes_archiv("t")
+        shutil.rmtree(os.path.join(self.wurzel, "t"))
+        return archiv
+
+    def protokoll(self, slug="t"):
+        db = sqlite3.connect(os.path.join(self.wurzel, slug, "fall.db"))
+        zeilen = db.execute("SELECT aktion, objekt, wer FROM protokoll ORDER BY nr").fetchall()
+        db.close()
+        return zeilen

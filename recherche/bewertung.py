@@ -1,7 +1,12 @@
 """Bewertung: Statusregeln für Behauptungen, Unabhängigkeit der Quellen, Integritätsprüfung, Export."""
 
+import shutil
+import sqlite3
+from pathlib import Path
+
 from . import quellen as q
-from .store import Fehler, PRUEFBARE_STATUS, jetzt, zu_dict, zu_liste
+from .store import (BEHAUPTUNGS_STATUS, Fall, Fehler, PRUEFBARE_STATUS, jetzt, lade_fall,
+                    zu_dict, zu_liste)
 
 PRIMAER_TYPEN = ("amtlich", "register", "gericht", "parlament")
 PRIMAER_BEZEICHNUNG = {"amtlich": "amtlicher Quelle", "register": "Registerquelle",
@@ -183,20 +188,67 @@ def zuruecksetzen(fall, behauptung_id):
     return war_geprueft
 
 
-def obergrenzen_nachziehen(fall):
-    """Setzt jede geprüfte Behauptung zurück, deren Status über ihrer Obergrenze liegt
-    (nach Änderung von Quellen oder Prämissen). Gibt die IDs zurück."""
+def status_unzulaessig(art, status, kontext, behauptung):
+    """Warum der Status der Behauptung nicht stehen darf, sonst None.
+
+    Eine Stelle für die Nachführung nach Änderungen, das Laden einer Akte und `pruefe`:
+    bekannter Status, Bewertung nur als Werturteil, Werturteil nur bei Bewertungen, belegt
+    und gestützt höchstens bis zur Obergrenze."""
+    if status not in BEHAUPTUNGS_STATUS:
+        return "unbekannter Status %r" % status
+    if art == "bewertung":
+        return None if status == "werturteil" else "Eine Bewertung hat immer den Status werturteil"
+    if status == "werturteil":
+        return "Status werturteil gibt es nur bei Bewertungen"
+    if status in ("belegt", "gestuetzt"):
+        grenze, grund = kontext.obergrenze(behauptung)
+        if RANG[status] > RANG[grenze]:
+            return "Status %s liegt über der Obergrenze %s (%s)" % (status, grenze, grund)
+    return None
+
+
+def _nachziehen(fall):
+    """Setzt jede Behauptung mit unzulässigem Status zurück; gibt [(ID, Grund)] zurück."""
     zurueckgesetzt = []
     geaendert = True
     while geaendert:
         geaendert = False
         kontext = Kontext(fall)
         for a in kontext.behauptungen.values():
-            if a["status"] in ("belegt", "gestuetzt") and RANG[a["status"]] > RANG[kontext.obergrenze(a)[0]]:
+            grund = status_unzulaessig(a["art"], a["status"], kontext, a)
+            if grund:
                 zuruecksetzen(fall, a["id"])
-                zurueckgesetzt.append(a["id"])
+                zurueckgesetzt.append((a["id"], grund))
                 geaendert = True
     return zurueckgesetzt
+
+
+def obergrenzen_nachziehen(fall):
+    """Setzt jede Behauptung zurück, deren Status unzulässig ist (nach Änderung von Quellen
+    oder Prämissen, nach dem Laden einer Akte). Gibt die IDs zurück."""
+    return [aid for aid, _grund in _nachziehen(fall)]
+
+
+def lade_akte(wurzel, archivpfad, wer, herkunft):
+    """Lädt eine gesicherte Akte und prüft sie sofort: Ein Archiv kann Status tragen, die die
+    Belege nicht tragen. Gibt (Slug, [(ID, Grund)]) der zurückgesetzten Behauptungen zurück.
+    Einziger Weg, eine Akte zu laden."""
+    wurzel = Path(wurzel)
+    slug = lade_fall(wurzel, archivpfad)
+    try:
+        fall = Fall.oeffnen(wurzel, slug, wer)
+        try:
+            fall.conn.execute("PRAGMA journal_mode=WAL")
+            with fall.schreiben():
+                fall.log("fall laden", slug, herkunft)
+                zurueck = _nachziehen(fall)
+        finally:
+            fall.conn.close()
+    except (sqlite3.Error, KeyError, ValueError, TypeError, OSError) as fehler:
+        shutil.rmtree(str(wurzel / slug), ignore_errors=True)
+        raise Fehler("Die Akte im Archiv ist beschädigt oder unvollständig (%s); nichts wurde geladen."
+                     % fehler)
+    return slug, zurueck
 
 
 def nach_aenderung(fall, behauptung_id=None):
@@ -246,6 +298,15 @@ def _unbelegt(k):
         elif a["art"] in ("schlussfolgerung", "bewertung") and not k.aus.get(a["id"]):
             probleme.append(_problem("sperre", "UNBELEGT", a["id"],
                                      "%s ohne Prämissen (--aus)" % a["art"]))
+    return probleme
+
+
+def _status(k):
+    probleme = []
+    for a in k.behauptungen.values():
+        grund = status_unzulaessig(a["art"], a["status"], k, a)
+        if grund:
+            probleme.append(_problem("sperre", "STATUS", a["id"], grund))
     return probleme
 
 
@@ -374,7 +435,7 @@ def pruefe(fall):
     """Alle Probleme in der Ausgabereihenfolge (Sperren, Vor Veröffentlichung, Hinweise)."""
     k = Kontext(fall)
     sperren_h2, hinweise_h1 = _gegenrecherche(k)
-    return (_zitate(k) + _unbelegt(k) + _ungeprueft(k) + _widerspruch(k)
+    return (_zitate(k) + _status(k) + _unbelegt(k) + _ungeprueft(k) + _widerspruch(k)
             + _quelle_unbewertet(k) + _kategorie(k) + sperren_h2
             + _stellungnahme(k) + _betroffene_fehlen(k) + _privatperson(k) + _identitaet(k)
             + _abhaengig(k) + hinweise_h1 + _fragen_offen(k))

@@ -2,6 +2,7 @@
 
 import calendar
 import contextlib
+import errno
 import json
 import os
 import re
@@ -10,6 +11,7 @@ import sqlite3
 import subprocess
 import tempfile
 import zipfile
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -404,10 +406,23 @@ def _archiv_slug(namen):
 
 MAX_ARCHIV_DATEIEN = 50000
 MAX_ARCHIV_BYTES = 4 * 1024 ** 3
+# Ein kleines Archiv darf nicht ein großes Vielfaches an Speicher belegen (Zip-Bombe).
+MAX_OHNE_VERHAELTNIS = 50 * 1024 ** 2
+MAX_VERHAELTNIS = 100
+SPEICHER_RESERVE = 100 * 1024 ** 2
+
+_ENTPACK_FEHLER = (zipfile.BadZipFile, zlib.error, EOFError, OSError, RuntimeError, NotImplementedError)
+
+
+def _mb(bytes_):
+    return max(1, bytes_ // (1024 * 1024))
 
 
 def lade_fall(wurzel, archivpfad):
-    """Stellt einen mit sichere_fall gesicherten Fall wieder her; gibt den Slug zurück."""
+    """Stellt einen mit sichere_fall gesicherten Fall wieder her; gibt den Slug zurück.
+
+    Ruft niemand außer `bewertung.lade_akte` auf: Eine geladene Akte muss danach geprüft
+    werden. Bei jedem Fehler bleibt nichts im Fallverzeichnis zurück."""
     wurzel = Path(wurzel)
     try:
         archiv = zipfile.ZipFile(str(archivpfad))
@@ -415,21 +430,35 @@ def lade_fall(wurzel, archivpfad):
         raise Fehler("Archiv nicht lesbar: %s" % fehler)
     with archiv:
         eintraege = [i for i in archiv.infolist() if not i.is_dir()]
-        if len(eintraege) > MAX_ARCHIV_DATEIEN or sum(i.file_size for i in eintraege) > MAX_ARCHIV_BYTES:
+        gesamt = sum(i.file_size for i in eintraege)
+        if len(eintraege) > MAX_ARCHIV_DATEIEN or gesamt > MAX_ARCHIV_BYTES:
             raise Fehler("Archiv zu groß")
+        komprimiert = sum(i.compress_size for i in eintraege)
+        if gesamt > MAX_OHNE_VERHAELTNIS and gesamt > MAX_VERHAELTNIS * max(komprimiert, 1):
+            raise Fehler("Archiv verdächtig stark komprimiert (%d MB entpackt aus %d MB gepackt); "
+                         "nichts wurde geladen." % (_mb(gesamt), _mb(komprimiert)))
         slug = _archiv_slug([i.filename for i in eintraege])
         if (wurzel / slug).exists():
             raise Fehler("Fall existiert bereits: %s" % slug)
         wurzel.mkdir(parents=True, exist_ok=True)
+        frei = shutil.disk_usage(str(wurzel)).free
+        if gesamt + SPEICHER_RESERVE > frei:
+            raise Fehler("Nicht genug freier Speicher: Die Akte braucht %d MB plus %d MB Reserve, "
+                         "frei sind %d MB." % (_mb(gesamt), _mb(SPEICHER_RESERVE), _mb(frei)))
         temp = Path(tempfile.mkdtemp(prefix=".laden-", dir=str(wurzel)))
         try:
-            for eintrag in eintraege:
-                ziel = temp / eintrag.filename
-                ziel.parent.mkdir(parents=True, exist_ok=True)
-                with archiv.open(eintrag) as quelle, open(str(ziel), "wb") as datei:
-                    shutil.copyfileobj(quelle, datei)
-            (temp / slug / "quellen").mkdir(exist_ok=True)
-            (temp / slug).rename(wurzel / slug)
+            try:
+                for eintrag in eintraege:
+                    ziel = temp / eintrag.filename
+                    ziel.parent.mkdir(parents=True, exist_ok=True)
+                    with archiv.open(eintrag) as quelle, open(str(ziel), "wb") as datei:
+                        shutil.copyfileobj(quelle, datei)
+                (temp / slug / "quellen").mkdir(exist_ok=True)
+                (temp / slug).rename(wurzel / slug)
+            except _ENTPACK_FEHLER as fehler:
+                if isinstance(fehler, OSError) and fehler.errno == errno.ENOSPC:
+                    raise Fehler("Der Speicher ist beim Entpacken voll gelaufen; nichts wurde geladen.")
+                raise Fehler("Archiv beschädigt oder unvollständig (%s); nichts wurde geladen." % fehler)
         finally:
             shutil.rmtree(str(temp), ignore_errors=True)
     return slug

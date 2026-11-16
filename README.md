@@ -41,14 +41,22 @@ In einer Cloud-Sitzung verschwindet die Akte mit dem Container. Wer eine Recherc
 
 ## Oberfläche und Android-App
 
-Die Fallakte hat eine Oberfläche, die ohne Claude auskommt. Sie zeigt Fälle, die die Rollen erarbeitet haben, und erlaubt, eine Recherche von Hand zu führen: Quellen sichern, Textstellen als Beleg übernehmen, Behauptungen prüfen, Stellungnahmen nachhalten. Es gelten dieselben Regeln wie für die Rollen.
+Die Fallakte hat eine Oberfläche, die ohne Claude auskommt. Sie zeigt Fälle, die die Rollen erarbeitet haben, und erlaubt, eine Recherche von Hand zu führen: Quellen sichern, Textstellen als Beleg übernehmen, Behauptungen prüfen, Stellungnahmen nachhalten. Es gelten dieselben Regeln wie für die Rollen, weil die Oberfläche dieselben Befehle ausführt.
 
 - **Am Rechner:** `python3 -m recherche web` gibt eine Adresse aus, die du im Browser öffnest. Der Server lauscht nur auf dem eigenen Rechner und verlangt das Token aus der Adresse.
-- **Auf Android:** Die App „Recherche“ enthält dieselbe Oberfläche samt Python-Paket. Die aktuelle Vorabversion liegt unter [Releases](https://github.com/Tra1c0/Investigative-Ai-Researcher-/releases/tag/apk-vorab). Zum Installieren die APK öffnen und dem Browser oder Dateimanager die Installation erlauben.
+- **Auf Android:** Die App „Recherche“ enthält dieselbe Oberfläche samt Python-Paket. Die aktuelle Vorabversion liegt unter [Releases](https://github.com/Tra1c0/Investigative-Ai-Researcher-/releases/tag/apk-vorab). Zum Installieren die Datei `recherche.apk` öffnen und dem Browser oder Dateimanager die Installation erlauben. Sie läuft auf 64-Bit-Geräten ab Android 7.
 
-In der App steckt keine KI. Ein eigenes Programm kann das Claude-Abo nicht nutzen, die Rollen laufen deshalb weiter in Claude Code (E-009). Zwischen beiden wandert die Akte als Datei: In der Sitzung `fall sichern`, die Zip-Datei aufs Telefon, in der App „Akte laden“. Zurück geht es mit „Akte sichern“ in der App und `fall laden` in der Sitzung.
+In der App steckt keine KI. Ein eigenes Programm kann das Claude-Abo nicht nutzen, die Rollen laufen deshalb weiter in Claude Code (E-009). Zwischen beiden wandert die Akte als Datei:
+
+1. In der Sitzung `python3 -m recherche fall sichern`, die Zip-Datei aufs Telefon.
+2. In der App „Akte laden“. Dabei prüft die App jede Behauptung neu: Ein Status, den die Belege der Akte nicht tragen, fällt auf „ungeprüft“ zurück.
+3. Zurück mit „Akte sichern“ in der App und `python3 -m recherche fall laden <datei>` in der Sitzung.
+
+Einen Fall, den es auf dem Gerät schon gibt, lädt die App nicht ein zweites Mal. Er muss dort erst gelöscht werden („Fall löschen“ im Überblick des Falls).
 
 Die App speichert Akten nur im eigenen Speicherbereich, schließt sie von der Cloud-Sicherung des Systems aus und geht nur ins Netz, wenn du eine Quelle abrufen lässt.
+
+**Vor jedem Update die Akten sichern.** Die Vorabversion ist mit einem Schlüssel signiert, der bei jedem Build neu entsteht. Android installiert sie deshalb nicht über eine ältere Version: Die alte App muss vorher deinstalliert werden, und dabei löscht Android ihre Akten.
 
 ## Voraussetzungen
 
