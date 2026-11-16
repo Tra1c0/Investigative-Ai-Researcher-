@@ -735,6 +735,12 @@ border-radius:4px;margin:.4rem 0}
 table{border-collapse:collapse;font-size:.9rem;min-width:100%}
 th,td{border:1px solid var(--rand);padding:.3rem .5rem;text-align:left;vertical-align:top}
 th{background:var(--karte)}
+@media (max-width:40rem){.tabelle{overflow-x:visible}
+table,tbody,tr,td{display:block}thead{display:none}table{min-width:0}
+tr{border:1px solid var(--rand);border-radius:6px;margin:.6rem 0;padding:.3rem .6rem;
+background:var(--karte)}
+td{border:0;padding:.1rem 0}td:empty{display:none}
+td::before{content:attr(data-spalte) ": ";font-weight:600}}
 """
 
 
@@ -801,9 +807,13 @@ class _Html:
         return f'<ul class="felder">{items}</ul>' if items else ""
 
     def tabelle(self, kopf, zeilen):
+        """Auf schmalen Bildschirmen wird jede Zeile zu einem Block; die Spaltennamen
+        stehen dafür an jeder Zelle (`data-spalte`)."""
         th = "".join(f"<th>{e(k)}</th>" for k in kopf)
-        tr = "".join(f"<tr{i}>" + "".join(f"<td>{z}</td>" for z in zelle) + "</tr>"
-                     for i, zelle in zeilen)
+        tr = "".join(
+            f"<tr{i}>" + "".join(f'<td data-spalte="{e(kopf[n]) if n < len(kopf) else ""}">{z}</td>'
+                                 for n, z in enumerate(zelle)) + "</tr>"
+            for i, zelle in zeilen)
         return (f'<div class="tabelle"><table><thead><tr>{th}</tr></thead>'
                 f"<tbody>{tr}</tbody></table></div>")
 
@@ -1029,13 +1039,15 @@ class _Html:
                 f"<p>{e(GRENZEN_SATZ)}</p>")
 
     def s_quellen(self):
-        zeilen = []
+        """Je Quelle eine Karte: Fünfzehn Angaben passen in keiner Breite in eine Tabellenzeile."""
+        karten = []
         for q in self.a.quellen:
             z = quellen_zellen(q)
-            zellen = ([e(z[0])] + [e(x) for x in z[1:10]]
-                      + [h_url(z[10]), h_url(z[11])] + [e(x) for x in z[12:]])
-            zeilen.append((self.anker(q.id), zellen))
-        return self.tabelle(QUELLEN_KOPF, zeilen)
+            werte = [e(x) for x in z[2:10]] + [h_url(z[10]), h_url(z[11])] + [e(x) for x in z[12:]]
+            karten.append(f'<div class="karte"{self.anker(q.id)}>'
+                          f'<h4>{e(z[0])} · {e(z[1]) or "(ohne Titel)"}</h4>'
+                          f"{self.felder(zip(QUELLEN_KOPF[2:], werte))}</div>")
+        return "".join(karten)
 
     # -- Dokument -----------------------------------------------------------
 

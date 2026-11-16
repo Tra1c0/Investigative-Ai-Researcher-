@@ -163,6 +163,25 @@ class Reihenfolge(unittest.TestCase):
         self.assertEqual(re.findall(r'<li id="(E\d)"', teil), ["E3", "E2", "E1", "E4"])
 
 
+class HtmlAufSchmalemBildschirm(unittest.TestCase):
+    def test_quellen_als_karten_mit_anker_und_link(self):
+        h = dossier.render_html(fixture())
+        teil = h.split('id="sec-quellen"')[1].split("</section>")[0]
+        self.assertNotIn("<table", teil)
+        self.assertEqual(re.findall(r'<div class="karte" id="(Q\d+)">', teil),
+                         [q["id"] for q in fixture()["quellen"]])
+        adressen = [q["url"] for q in fixture()["quellen"] if q["url"].startswith("http")]
+        self.assertTrue(adressen)
+        for adresse in adressen:
+            self.assertIn('<strong>URL:</strong> <a href="%s"' % adresse.replace("&", "&amp;"), teil)
+
+    def test_tabellenzellen_tragen_den_spaltennamen(self):
+        h = dossier.render_html(fixture())
+        teil = h.split('id="sec-akteure"')[1].split("</section>")[0]
+        self.assertIn('<td data-spalte="Name">', teil)
+        self.assertIn("td::before{content:attr(data-spalte)", h)
+
+
 class HtmlSicherheit(unittest.TestCase):
     def gift(self):
         d = fixture()
