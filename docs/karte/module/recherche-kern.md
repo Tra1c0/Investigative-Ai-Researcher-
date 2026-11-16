@@ -9,8 +9,8 @@ paths:
   - "tests/test_recherche_*.py"
 zweck: "Fallakte der Recherche: Speicher, Befehle, Quellenabruf mit Zitatprüfung, Statusregeln, Integritätsprüfung"
 tests: "python3 -m unittest discover -s tests -p 'test_recherche*.py'"
-stand: "2ac03df860a4"
-testlauf: "gruen 2ac03df860a4 2026-11-16"
+stand: "9e87697966fc"
+testlauf: "gruen 9e87697966fc 2026-11-16"
 ---
 # recherche-kern
 
@@ -28,14 +28,19 @@ testlauf: "gruen 2ac03df860a4 2026-11-16"
 - `recherche/quellen.py:pruefe_ziel` lehnt interne Adressen ab, auch als Ziel einer Umleitung. Scheitert die Namensauflösung, lässt es den Abruf zu, weil hinter einem Proxy nur dieser auflösen kann.
 - Webarchive werden nur mit `--archiv` oder `--sichern` angefragt, weil die Anfrage verrät, wozu recherchiert wird (E-008).
 - Aus HTML wird der gesamte sichtbare Text übernommen, samt Navigation; eine Erkennung des Hauptinhalts gibt es nicht. Seiten, die ihren Inhalt per JavaScript laden, liefern fast nichts und lösen die Warnung unter 200 Zeichen aus.
-- `recherche/cli.py:web` startet die Weboberfläche (siehe recherche-web), die `recherche/cli.py:main` im selben Prozess aufruft. Befehle dürfen darum nur über `sys.stdin` lesen und nur argparse darf beenden; eine neue Option, die einen Pfad nimmt, muss in `recherche/web.py:pruefe_argv` gesperrt werden.
+- `recherche/cli.py:web` startet die Weboberfläche (siehe recherche-web), die `recherche/cli.py:main` im selben Prozess aufruft. Befehle dürfen darum nur über `sys.stdin` lesen und nur argparse darf beenden. Die Seite erlaubt nur Paare aus `recherche/web.py:ERLAUBT`; ein neuer Befehl ist dort ohne Eintrag gesperrt, ein neuer Pfadparameter muss `pfad`, `datei` oder `ziel` heißen, sonst prüft `recherche/web.py:_pruefer` ihn nicht.
+- Eine geladene Akte kann Status tragen, die ihre Belege nicht tragen (das Archiv ist nur eine SQLite-Datei). `recherche/bewertung.py:lade_akte` ist darum der einzige Weg, eine Akte zu laden (CLI und Weboberfläche): Es lädt, setzt jede Behauptung mit unzulässigem Status zurück (`recherche/bewertung.py:status_unzulaessig`) und protokolliert „fall laden“. `recherche/bewertung.py:pruefe` meldet unzulässige Status als Sperre `STATUS`, falls sie anders entstehen. Wer `recherche/store.py:lade_fall` direkt aufruft, umgeht das.
+- `recherche/store.py:lade_fall` lehnt ab: mehr als 50 MiB entpackt bei mehr als dem 100-fachen der gepackten Größe, zu wenig freien Speicher (Größe plus 100 MiB Reserve) und beschädigte Archive; danach bleibt nichts im Fallverzeichnis zurück.
+- Die Datenbank einer geladenen Akte darf nur die Tabellen aus `SCHEMA` enthalten, im Wortlaut (`recherche/store.py:pruefe_schema`). Ein Auslöser oder eine Ansicht könnte Werte ändern, nachdem sie geprüft wurden, etwa einen zurückgesetzten Status wiederherstellen. Folge: Wer `SCHEMA` ändert, sperrt alle älteren Sicherungen aus, bis die Prüfung auch die alte Fassung kennt.
+- `recherche/store.py:faelle_liste` zählt nur Verzeichnisse in Slug-Form als Fälle. Die Arbeitsverzeichnisse von Laden und Löschen beginnen mit einem Punkt und enthalten zeitweise eine `fall.db`.
 - Mehrere Prozesse schreiben gleichzeitig in dieselbe Akte (SQLite im WAL-Modus). Eine ID außerhalb der Schreibtransaktion zu vergeben führt zu doppelten IDs.
 - Kein Test greift auf das Internet zu: Die Abruftests laufen gegen einen lokalen Server und setzen `RECHERCHE_LOKAL_ERLAUBT=1`.
 
 ## Tests
-- Abgedeckt: Abruf (Zeichensätze, Umleitung, Fehler, Größengrenze, interne Adressen, Dubletten), Zitatprüfung samt Auslassungen und Positionen, Tabelle der Obergrenzen einschließlich Zuschreibung, Zurücksetzen der Prüfung, jede Problemart von `pruefe`, Export, gleichzeitiges Schreiben, Sichern und Laden einer Akte. Die Tests der Weboberfläche (`tests/test_recherche_web.py`) laufen unter demselben Muster mit, gehören inhaltlich zu recherche-web.
+- Abgedeckt: Abruf (Zeichensätze, Umleitung, Fehler, Größengrenze, interne Adressen, Dubletten), Zitatprüfung samt Auslassungen und Positionen, Tabelle der Obergrenzen einschließlich Zuschreibung, Zurücksetzen der Prüfung, jede Problemart von `pruefe`, Export, gleichzeitiges Schreiben, Sichern und Laden einer Akte, PDF-Text über `pdftotext` und über `pypdf` (`tests/test_recherche_quellen.py:PdfTest`). Laden, Archivgrenzen und fremder Aufbau der Datenbank: `tests/test_recherche_archiv.py`. Die Tests der Weboberfläche (`tests/test_recherche_web.py`) laufen unter demselben Muster mit, gehören inhaltlich zu recherche-web.
 - Von Hand geprüft am 2026-11-16: Abruf, Lesen und Belegen an drei echten Seiten (support.claude.com, platform.claude.com, anthropic.com), dazu je ein Lauf der Rollen `rechercheur` und `dokumentar` gegen die Akte.
-- Lücken: kein automatischer Test gegen echte Webseiten. PDF-Text nur über `pdftotext` gelaufen, der Weg über `pypdf` nicht. Nicht unter Python 3.9 gelaufen.
+- Die CI (`.github/workflows/apk.yml`) lässt die Tests unter Python 3.9 und 3.13 laufen. Unter 3.13 ist `pypdf` in der Version der Android-App installiert, sonst werden die Tests dieses Wegs übersprungen; in der App gibt es nur ihn.
+- Lücken: kein automatischer Test gegen echte Webseiten. PDF-Text nur an einem selbst erzeugten Dokument mit eingebettetem Text; gescannte und verschlüsselte PDFs nicht.
 
 ## Sackgassen
 - 2026-11-16 · Position eines Belegs als Stelle im normalisierten Text · gescheitert daran, dass `quelle lesen --ab <stelle>` das Zitat nicht traf, weil die Leseausgabe im gespeicherten Text zählt · Beleg: Rollentest des Rechercheurs, Bericht in der Sitzung · erneut prüfen, wenn nie: ein Koordinatensystem genügt

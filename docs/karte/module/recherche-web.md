@@ -5,19 +5,24 @@ paths:
   - "tests/test_recherche_web.py"
 zweck: "Lokale Weboberfläche der Fallakte: Python-Server, eine HTML-Seite, Schnittstelle für die Android-Hülle"
 tests: "python3 -m unittest discover -s tests -p 'test_recherche_web.py'"
-testlauf: "gruen fcdd441283f6 2026-11-16"
-stand: "fcdd441283f6"
+testlauf: "gruen abf14a7f7258 2026-11-16"
+stand: "abf14a7f7258"
 ---
 # recherche-web
 
 ## Einstieg
 - `recherche/web.py:Server` ist der HTTP-Server (nur 127.0.0.1, Token je Start); `recherche/web.py:_Handler._verteile` legt die Reihenfolge der Prüfungen fest: Host, Ursprung bei POST, Token, Route.
-- `recherche/web.py:fuehre_befehl_aus` führt die Kommandozeile im Prozess aus (`recherche/web.py:_lauf` über `recherche/cli.py:main`); `recherche/web.py:pruefe_argv` weist ab, womit der Client einen Pfad wählen könnte.
+- `recherche/web.py:fuehre_befehl_aus` führt die Kommandozeile im Prozess aus: `recherche/web.py:_lauf` parst mit `recherche/cli.py:baue_parser`, `recherche/web.py:_pruefer` prüft die Namespace gegen `recherche/web.py:ERLAUBT`, dann läuft genau sie über `recherche/cli.py:fuehre_aus`.
 - `recherche/web.py:starte_im_hintergrund`, `recherche/web.py:exportiere`, `recherche/web.py:importiere` und `recherche/web.py:dossier_datei` ruft die Android-Hülle beim Namen auf (siehe android-huelle); umbenennen bricht die App.
 - `recherche/web_ui.html` ist die ganze Oberfläche (CSS und JS inline, Nonce-Platzhalter `__NONCE__`, den der Server je Antwort ersetzt).
 
 ## Verträge und Fallstricke
-- Der Client wählt nie einen Pfad: `pruefe_argv` lehnt `quelle datei`, `fall sichern`, `fall laden`, `web`, `--datei` und `--ziel` samt Abkürzungen ab (argparse nimmt `--dat`), Uploads gehen als Temp-Datei mit vom Server gebildetem Namen durch `quelle datei`, Slugs kommen nur aus `faelle_liste`. Ein neuer Befehl mit Pfadoption muss in `pruefe_argv` aufgenommen werden.
+- Der Client wählt nie einen Pfad, und das lässt sich nur an der geparsten Namespace sichern, nicht an der Rohliste: argparse nimmt ab Python 3.13, dem Python der App, `--` zwischen Bereich und Aktion (`["fall","--","laden",x]` war ein Weg an jeder Prüfung von `argv[:2]` vorbei; bis 3.12 lehnt der Parser das selbst ab) und Abkürzungen (`--dat`). Darum gilt: Erlaubt sind nur die Paare in `ERLAUBT` (Standard ist Ablehnen), `pfad`, `datei` und `ziel` müssen leer sein, `fall` und `wer` müssen die des Servers sein, und ohne Fall läuft nur `fall neu` und `fall liste` (sonst nähme die Kommandozeile den einzigen Fall von selbst). `pruefe_argv` ist nur die billige erste Stufe. Ein neuer Befehl der Seite gehört in `ERLAUBT`; ein Test liest die Paare aus `recherche/web_ui.html` und bricht bei Abweichung.
+- Fall, Name und Titel stehen als `--fall=`, `--wer=`, `--titel=` im Aufruf; ein Wert mit führendem `-` wäre sonst eine Option und ließe jeden Befehl scheitern. Uploads gehen als Temp-Datei mit vom Server gebildetem Namen durch `quelle datei` (eigene Prüfung der Namespace in `lade_quelle_datei`).
+- Löschen gibt es nur als `POST /api/loeschen` (`recherche/web.py:loesche_fall`: Fall und Bestätigung sind derselbe vorhandene Slug, Umbenennen im Fallverzeichnis, dann Entfernen). Es ist weder Befehl der Kommandozeile noch über `befehl` erreichbar; Agenten sollen Fallakten nicht löschen können.
+- `recherche/web.py:importiere` gibt den Text für den Nutzer zurück („Akte geladen: <slug>“, bei Rücksetzungen mit Zahl und IDs), nicht den Slug; die Android-Hülle zeigt ihn unverändert. `/api/laden` liefert `slug` und `zurueckgesetzt`.
+- Jede Verbindung hat ein Lesetimeout (`LESE_TIMEOUT`). Antwortet der Server vor dem Lesen eines Körpers, schließt `_lingern` erst die Senderichtung; ein Schließen mit ungelesenen Daten löst RST aus, das die Antwort beim Client vernichten kann. Tests zu großen Körpern erklären darum nur die Länge und senden keinen Körper.
+- IDs aus der Akte werden nur zu DOM-IDs, wenn sie die Form `^[A-Z]\d+$` haben, und `window.Android` gilt nur mit Funktion `oeffneExtern`; eine importierte Akte mit ID wie `fuss` oder `Android` überdeckt sonst Seitenelemente und die Brücke.
 - Die Seite rechnet keine Regel nach; Status, Obergrenze und Probleme kommen aus `/api/export`. Nur Bereitschaftszeile, Gruppierung und Reihenfolge der Behauptungen spiegeln `recherche/dossier.py` (zwei Stellen, bei Änderung dort anpassen).
 - Der Textleser parst die Ausgabe von `quelle lesen` (Fußzeile `-- Zeichen a bis b von n`, Trefferköpfe `[Zeichen a-b]`); ändert sich das Format in `recherche/cli.py:quelle_lesen`, bricht die Seite. Positionen zählen Unicode-Zeichen wie Python, nicht UTF-16 (`nimmZeichen`).
 - Werte gehen immer als `--name=wert` an die Kommandozeile, sonst liest argparse ein Wort mit führendem `-` als Option.
@@ -29,9 +34,9 @@ stand: "fcdd441283f6"
 - Die CLI schließt ihre Datenbankverbindungen erst beim Aufräumen; `_lauf` unterdrückt die dabei entstehende ResourceWarning, sonst stünde sie im Fehlertext.
 
 ## Tests
-- Abgedeckt: Token und Cookie, Host- und Ursprungsprüfung, Köpfe auf jeder Antwort, CSP samt Nonce, Größengrenzen, Befehl mit Code, Ausgabe und deutschem Fehler, jede verbotene Option und jeder verbotene Befehl ohne Wirkung, Zitat von stdin mit Sonderzeichen, Upload, Sichern und Laden über HTTP und über die Python-Funktionen, ungültige Slugs, eingebettetes Dossier, Textprüfung der Seite (keine fremden Ressourcen, kein innerHTML).
-- Von Hand geprüft am 2026-11-16 mit Chromium (Playwright) bei 390 und 1280 px an einer Kopie von `faelle/selbsttest-fable`: kein waagerechtes Scrollen, Quelle per Text, Beleg aus Auswahl, Behauptung, Prüfung, Suche, Textseiten, Dossier im Rahmen, Klick auf Quellenlink im Dossier öffnet neuen Tab, `window.Android` als Attrappe.
-- Lücken: keine Prüfung in der echten Android-WebView; Markierung per Langdruck mit dem Finger nur über die Selection-API nachgestellt; kein Test des JavaScripts selbst (nur Textprüfung und Browserlauf von Hand); nicht unter Python 3.9 gelaufen.
+- Abgedeckt: zwei Stufen der Befehlsprüfung samt `--`, Abkürzungen, Namen und Titeln mit `-` am Anfang, Laden mit zurückgesetztem Status, Löschen mit falscher und richtiger Bestätigung, Lesetimeout, Token und Cookie, Host- und Ursprungsprüfung, Köpfe auf jeder Antwort, CSP samt Nonce, Größengrenzen, Befehl mit Code, Ausgabe und deutschem Fehler, jede verbotene Option und jeder verbotene Befehl ohne Wirkung, Zitat von stdin mit Sonderzeichen, Upload, Sichern und Laden über HTTP und über die Python-Funktionen, ungültige Slugs, eingebettetes Dossier, Textprüfung der Seite (keine fremden Ressourcen, kein innerHTML).
+- Von Hand geprüft am 2026-11-16 mit Chromium (auch Löschen, Statuswarnung, beide Android-Knopfvarianten, Ladehinweis) (Playwright) bei 390 und 1280 px an einer Kopie von `faelle/selbsttest-fable`: kein waagerechtes Scrollen, Quelle per Text, Beleg aus Auswahl, Behauptung, Prüfung, Suche, Textseiten, Dossier im Rahmen, Klick auf Quellenlink im Dossier öffnet neuen Tab, `window.Android` als Attrappe.
+- Lücken: in der Android-WebView ist nur der Start geprüft (im Emulator erscheint die Fallliste, siehe android-huelle), keine Bedienung; Markierung per Langdruck mit dem Finger nur über die Selection-API nachgestellt; kein Test des JavaScripts selbst (nur Textprüfung und Browserlauf von Hand).
 
 ## Sackgassen
-- (keine)
+- 2026-11-16 · Befehle der Seite an der Rohliste prüfen (`argv[:2]` gegen eine Verbotsliste, Optionen am Präfix) · gescheitert an argparse ab Python 3.13: `["quelle","--","datei","/etc/passwd"]` legte eine beliebige lesbare Datei als Quelle an, `["fall","--","laden",x]` lud ein Zip von jedem Pfad · Beleg: Sicherheitsreview in der Sitzung, `tests/test_recherche_web.py:Befehlspruefung` · erneut prüfen, wenn nie: geprüft wird die geparste Namespace gegen eine Erlaubtliste

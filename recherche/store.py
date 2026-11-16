@@ -10,6 +10,7 @@ import shutil
 import sqlite3
 import subprocess
 import tempfile
+import urllib.parse
 import zipfile
 import zlib
 from datetime import datetime, timezone
@@ -167,7 +168,9 @@ def faelle_liste(wurzel):
     wurzel = Path(wurzel)
     if not wurzel.is_dir():
         return []
-    return sorted(p.name for p in wurzel.iterdir() if (p / "fall.db").is_file())
+    # Nur Namen in Slug-Form: Arbeitsverzeichnisse des Ladens und Löschens beginnen mit einem Punkt.
+    return sorted(p.name for p in wurzel.iterdir()
+                  if SLUG.fullmatch(p.name) and (p / "fall.db").is_file())
 
 
 def aktiver_slug(wurzel, angegeben):
@@ -418,6 +421,46 @@ def _mb(bytes_):
     return max(1, bytes_ // (1024 * 1024))
 
 
+def _schema_soll():
+    """Tabellenname -> CREATE-Anweisung aus SCHEMA, Leerraum vereinheitlicht."""
+    soll = {}
+    for anweisung in SCHEMA.split(";"):
+        treffer = re.match(r"\s*CREATE TABLE (\w+)", anweisung)
+        if treffer:
+            soll[treffer.group(1)] = " ".join(anweisung.split())
+    return soll
+
+
+def pruefe_schema(pfad):
+    """Die Datenbank einer geladenen Akte darf nur die Tabellen dieses Werkzeugs enthalten, im
+    Wortlaut von SCHEMA. Ein Auslöser oder eine Ansicht könnte Werte ändern, nachdem sie
+    geprüft wurden, etwa einen zurückgesetzten Status wiederherstellen."""
+    soll = _schema_soll()
+    adresse = "file:%s?mode=ro&immutable=1" % urllib.parse.quote(str(pfad))
+    try:
+        conn = sqlite3.connect(adresse, uri=True)
+        try:
+            zeilen = conn.execute("SELECT type, name, sql FROM sqlite_master").fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error as fehler:
+        raise Fehler("Die Akte im Archiv ist keine lesbare Datenbank (%s); nichts wurde geladen." % fehler)
+    gefunden = set()
+    for typ, name, sql in zeilen:
+        if typ == "table" and soll.get(name) == " ".join((sql or "").split()):
+            gefunden.add(name)
+        elif typ == "table" and name == "sqlite_sequence":
+            pass  # legt SQLite für AUTOINCREMENT selbst an
+        elif typ == "index" and sql is None and str(name).startswith("sqlite_autoindex_"):
+            pass  # automatische Indizes zu PRIMARY KEY und UNIQUE
+        else:
+            raise Fehler("Die Akte im Archiv hat einen fremden Aufbau (%s %s); nichts wurde geladen."
+                         % (typ, name))
+    fehlend = sorted(set(soll) - gefunden)
+    if fehlend:
+        raise Fehler("Der Akte im Archiv fehlen Tabellen (%s); nichts wurde geladen." % ", ".join(fehlend))
+
+
 def lade_fall(wurzel, archivpfad):
     """Stellt einen mit sichere_fall gesicherten Fall wieder her; gibt den Slug zurück.
 
@@ -454,11 +497,15 @@ def lade_fall(wurzel, archivpfad):
                     with archiv.open(eintrag) as quelle, open(str(ziel), "wb") as datei:
                         shutil.copyfileobj(quelle, datei)
                 (temp / slug / "quellen").mkdir(exist_ok=True)
-                (temp / slug).rename(wurzel / slug)
             except _ENTPACK_FEHLER as fehler:
                 if isinstance(fehler, OSError) and fehler.errno == errno.ENOSPC:
                     raise Fehler("Der Speicher ist beim Entpacken voll gelaufen; nichts wurde geladen.")
                 raise Fehler("Archiv beschädigt oder unvollständig (%s); nichts wurde geladen." % fehler)
+            pruefe_schema(temp / slug / "fall.db")
+            try:
+                (temp / slug).rename(wurzel / slug)
+            except OSError as fehler:
+                raise Fehler("Die Akte ließ sich nicht ablegen (%s); nichts wurde geladen." % fehler)
         finally:
             shutil.rmtree(str(temp), ignore_errors=True)
     return slug

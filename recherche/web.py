@@ -129,7 +129,8 @@ def _pruefer(slug, wer):
     """Zweite Stufe: prüft die geparste Namespace, genau die, die danach läuft."""
     def pruefe(args):
         paar = (getattr(args, "bereich", None), getattr(args, "aktion", None))
-        if paar not in ERLAUBT:
+        # Ohne Fall nur, was keinen braucht: Sonst wählte die Kommandozeile den einzigen Fall selbst.
+        if paar not in ERLAUBT or (slug is None and paar not in _OHNE_FALL):
             raise Anfragefehler(403, "Dieser Befehl ist über die Weboberfläche nicht erlaubt: %s."
                                 % (" ".join(t for t in paar if t) or "?"))
         for name in ("pfad", "datei", "ziel"):

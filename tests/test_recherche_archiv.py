@@ -3,6 +3,7 @@
 import errno
 import os
 import shutil
+import sqlite3
 import tempfile
 import zipfile
 from types import SimpleNamespace
@@ -10,7 +11,7 @@ from unittest import mock
 
 from test_recherche_basis import ArchivHilfen, FallTest
 
-from recherche import store
+from recherche import bewertung, store
 
 
 class AkteLaden(ArchivHilfen, FallTest):
@@ -75,7 +76,17 @@ class AkteLaden(ArchivHilfen, FallTest):
         with zipfile.ZipFile(ziel, "w") as z:
             z.writestr("t/fall.db", b"das ist keine Datenbank" * 20)
         ergebnis = self.fehler("fall", "laden", ziel)
-        self.assertIn("beschädigt", ergebnis.err)
+        self.assertIn("keine lesbare Datenbank", ergebnis.err)
+        self.assertEqual(os.listdir(self.wurzel), [])
+
+    def test_fehler_beim_pruefen_nach_dem_laden_hinterlaesst_nichts(self):
+        # Richtiger Aufbau, aber die Prüfung scheitert an den Daten: Die schon abgelegte Akte verschwindet wieder.
+        self.neuer_fall("t")
+        archiv = self.gesichertes_archiv("t")
+        shutil.rmtree(os.path.join(self.wurzel, "t"))
+        with mock.patch.object(bewertung, "_nachziehen", side_effect=sqlite3.DatabaseError("kaputte Seite")):
+            with self.assertRaisesRegex(store.Fehler, "beschädigt oder unvollständig"):
+                bewertung.lade_akte(self.wurzel, archiv, "tester", "Test")
         self.assertEqual(os.listdir(self.wurzel), [])
 
 
@@ -169,3 +180,57 @@ class Archivgrenzen(ArchivHilfen, FallTest):
             with self.assertRaisesRegex(store.Fehler, "Speicher .* voll"):
                 self.laden(self.gut)
         self.nichts_zurueck()
+
+
+class FremderAufbau(ArchivHilfen, FallTest):
+    """Die Datenbank einer geladenen Akte darf nur die Tabellen des Werkzeugs enthalten."""
+
+    def archiv_mit(self, *anweisungen):
+        self.neuer_fall("t")
+        db = sqlite3.connect(os.path.join(self.wurzel, "t", "fall.db"))
+        with db:
+            for anweisung in anweisungen:
+                db.execute(anweisung)
+        db.close()
+        archiv = self.gesichertes_archiv("t")
+        shutil.rmtree(os.path.join(self.wurzel, "t"))
+        return archiv
+
+    def abgelehnt(self, archiv, teil):
+        ergebnis = self.fehler("fall", "laden", archiv)
+        self.assertIn(teil, ergebnis.err)
+        self.assertIn("nichts wurde geladen", ergebnis.err)
+        self.assertEqual(os.listdir(self.wurzel), [])
+
+    def test_ausloeser_der_einen_zurueckgesetzten_status_wiederherstellt(self):
+        self.abgelehnt(self.archiv_mit(
+            "CREATE TRIGGER zurueck AFTER UPDATE ON behauptung WHEN NEW.status = 'ungeprueft' "
+            "BEGIN UPDATE behauptung SET status = 'belegt' WHERE id = NEW.id; END"),
+            "fremden Aufbau (trigger zurueck)")
+
+    def test_ansicht(self):
+        self.abgelehnt(self.archiv_mit("CREATE VIEW sicht AS SELECT * FROM quelle"),
+                       "fremden Aufbau (view sicht)")
+
+    def test_zusaetzliche_tabelle(self):
+        self.abgelehnt(self.archiv_mit("CREATE TABLE extra (x TEXT)"), "fremden Aufbau (table extra)")
+
+    def test_eigener_index(self):
+        self.abgelehnt(self.archiv_mit("CREATE INDEX nach_status ON behauptung (status)"),
+                       "fremden Aufbau (index nach_status)")
+
+    def test_geaenderte_tabelle(self):
+        self.abgelehnt(self.archiv_mit("ALTER TABLE behauptung ADD COLUMN zusatz TEXT"),
+                       "fremden Aufbau (table behauptung)")
+
+    def test_fehlende_tabelle(self):
+        self.abgelehnt(self.archiv_mit("DROP TABLE ereignis"), "fehlen Tabellen (ereignis)")
+
+
+class Fallliste(FallTest):
+    def test_nur_verzeichnisse_in_slug_form_sind_faelle(self):
+        self.neuer_fall("t")
+        for name in (".loeschen-0a1b", "Gross", "mit leer"):
+            os.mkdir(os.path.join(self.wurzel, name))
+            shutil.copy(os.path.join(self.wurzel, "t", "fall.db"), os.path.join(self.wurzel, name, "fall.db"))
+        self.assertEqual(store.faelle_liste(self.wurzel), ["t"])

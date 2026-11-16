@@ -3,7 +3,7 @@ paths:
   - "android/**"
   - ".github/workflows/apk.yml"
 zweck: "Android-Hülle: eingebettetes Python (Chaquopy) plus WebView um die lokale Oberfläche von recherche; Bau und Starttest in GitHub Actions"
-stand: "1dff8894c1f9"
+stand: "1968e51bb392"
 ---
 # android-huelle
 
@@ -27,11 +27,13 @@ stand: "1dff8894c1f9"
 - Manifest: nur INTERNET, `allowBackup=false`, leere Datenextraktion, Klartext nur für 127.0.0.1. FileProvider gibt nur `cache/export/` frei. `targetSdk` bleibt 34, ab 35 erzwingt Android Edge-to-Edge.
 - Versionen: AGP 8.13.0 (Chaquopy 17.2 unterstützt 7.3 bis 9.5), Gradle 8.13 über den Wrapper, JDK 17, compileSdk 35, Python 3.13 (muss auf dem Build-Rechner dieselbe Minor-Version haben).
 - Zwei Schalter oben im Workflow: `UI_PFLICHT` bestimmt nur die Strenge des Starttests, `VEROEFFENTLICHEN` allein, ob der Job `veroeffentlichen` die Vorabversion (Tag `apk-vorab`) anlegt; vorher enthielte sie eine App ohne Oberfläche. Sie löscht das alte Release samt Tag und legt es neu an. Ein Release aus dem allerersten Lauf (Commit 0a3b61e, noch ohne diese Bedingung, Anhang noch recherche-debug.apk) bleibt bis zum nächsten Veröffentlichungslauf stehen.
+- Der Job `veroeffentlichen` hängt an `tests`, `apk` und `starttest`. Anfangs fehlte `tests`: Ein Lauf mit rotem Test hätte bei eingeschaltetem Schalter trotzdem veröffentlicht. `tests` läuft unter Python 3.9 und 3.13; `pypdf` wird nur unter 3.13 installiert, dem Python der App.
 - `android/gradle/wrapper/gradle-wrapper.properties` hat keine Prüfsumme der Distribution, weil downloads.gradle.org im Entwicklungscontainer gesperrt ist; die Wrapper-JAR prüft der Workflow mit der Gradle-Wrapper-Validierung.
 
 ## Tests
 - Es gibt keinen lokalen Test: Der Android-SDK ist im Entwicklungscontainer gesperrt, gebaut wird nur in GitHub Actions.
 - Der Job `starttest` startet die APK auf einem x86_64-Emulator (API 34). Gemessen werden immer `python_ok`, `server_ok`, `ui_dump` (Überschrift „Fälle“ im uiautomator-Dump, auch als Entität `F&#228;lle`) und `ui_js` (die Seite loggt `oberflaeche bereit`, die Hülle schreibt es als `recherche: js: …`). `UI_PFLICHT=0` entscheidet nur `python_ok`; mit `1` zählt zusätzlich `server_ok` und einer der beiden UI-Werte. Das Skript gibt die Bildschirmtexte und die `js:`-Zeilen aus, weil Artefakte nicht immer abrufbar sind.
+- Im Emulator gesehen am 2026-11-16 (Lauf 43880314004): Der Dump zeigt die Texte der Seite samt der Android-Variante von „Akte laden“. Anmeldung per Cookie, JavaScript und Erkennung der Brücke funktionieren dort also.
 - Lokal geprüft wurde nur, was ohne Android läuft: die Regeln in `UrlRegeln` gegen einen Nachbau von `android.net.Uri` (nicht in CI, der Nachbau ist eine Annahme über Uri) und `starttest.sh` gegen ein vorgetäuschtes adb.
 - Nicht geprüft: Import, Export, Speichern, Dateiauswahl und Teilen auf einem Gerät, arm64.
 

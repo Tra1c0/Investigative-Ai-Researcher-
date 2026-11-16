@@ -445,11 +445,16 @@ class Befehlspruefung(WebTest):
         self.assertEqual(sorted(os.listdir(self.wurzel)), vorher)  # kein Zip, kein Fall
         self.assertEqual(len(self.export_http()["quellen"]), 1)
         # Auch ohne die Rohprüfung scheitert die zweite Stufe an der geparsten Namespace.
+        # Bis Python 3.12 lehnt der Parser `--` an dieser Stelle selbst ab; ab 3.13 (dem Python der
+        # App) nimmt er es an, und die zweite Stufe muss den Befehl abweisen. Ausgeführt wird nie.
         pruefer = web._pruefer("t", "tester")
         for argv in folgen:
-            with self.assertRaises(web.Anfragefehler) as fehler:
-                web._lauf(["--wer=tester", "--fall=t"] + argv, None, pruefer)
-            self.assertEqual(fehler.exception.status, 403, argv)
+            try:
+                ergebnis = web._lauf(["--wer=tester", "--fall=t"] + argv, None, pruefer)
+            except web.Anfragefehler as fehler:
+                self.assertEqual(fehler.status, 403, argv)
+            else:
+                self.assertEqual(ergebnis["code"], 2, argv)
         self.assertEqual(sorted(os.listdir(self.wurzel)), vorher)
         self.assertEqual(len(self.export_http()["quellen"]), 1)
 
@@ -469,6 +474,16 @@ class Befehlspruefung(WebTest):
                 self.assertEqual(ergebnis["code"], 2, argv)
         self.assertFalse(os.path.exists(pfad))
         self.assertEqual(sorted(os.listdir(self.wurzel)), ["t"])
+
+    def test_ohne_fall_laeuft_nur_was_keinen_braucht(self):
+        # Mit genau einem Fall nähme die Kommandozeile ihn von selbst; die Seite darf das nicht auslösen.
+        self.fall_mit_quelle()
+        pruefer = web._pruefer(None, "tester")
+        with self.assertRaises(web.Anfragefehler) as fehler:
+            web._lauf(["--wer=tester", "hypothese", "neu", "--text=x"], None, pruefer)
+        self.assertEqual(fehler.exception.status, 403)
+        self.assertEqual(self.export_http()["hypothesen"], [])
+        self.assertEqual(web._lauf(["--wer=tester", "fall", "liste"], None, pruefer)["code"], 0)
 
     def test_fall_und_wer_muessen_die_der_oberflaeche_sein(self):
         self.fall_mit_quelle()

@@ -17,9 +17,9 @@ env:
   # Oberflächenwerte werden gemessen und ausgegeben. "1": zusätzlich 'recherche: server ok'
   # und mindestens einer der Werte ui_dump (Überschrift im uiautomator-Dump) oder ui_js
   # (die Seite meldet 'oberflaeche bereit').
-  UI_PFLICHT: "0"
+  UI_PFLICHT: "1"
   # Ob der Job 'veroeffentlichen' die APK als öffentliche Vorabversion bereitstellt.
-  VEROEFFENTLICHEN: "0"
+  VEROEFFENTLICHEN: "1"
 
 jobs:
   tests:
