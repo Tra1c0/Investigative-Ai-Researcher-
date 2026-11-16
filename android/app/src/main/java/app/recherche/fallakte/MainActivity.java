@@ -1,6 +1,7 @@
 package app.recherche.fallakte;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
@@ -9,6 +10,7 @@ import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.ConsoleMessage;
 import android.webkit.JavascriptInterface;
 import android.webkit.MimeTypeMap;
 import android.webkit.ValueCallback;
@@ -53,6 +55,10 @@ public class MainActivity extends Activity {
     private static final int SLUG_MAX = 120;
     private static final int REQ_IMPORT = 1001;
     private static final int REQ_DATEI = 1002;
+    private static final int REQ_SPEICHERN = 1003;
+    private static final long MAX_LADEN_STANDARD = 512L * 1024 * 1024;
+    private static final int KONSOLE_MAX = 300;
+    private static final int TOAST_MAX = 160;
     private static final long MAX_ALTER_MS = 24L * 60 * 60 * 1000;
 
     // Der Server lebt so lange wie der Prozess; eine neu erzeugte Activity nimmt ihn wieder auf.
@@ -64,6 +70,8 @@ public class MainActivity extends Activity {
     private WebView web;
     private TextView status;
     private ValueCallback<Uri[]> dateiAntwort;
+    private final Object speicherLock = new Object();
+    private File zuSpeichern;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -91,6 +99,13 @@ public class MainActivity extends Activity {
         if (dateiAntwort != null) {
             dateiAntwort.onReceiveValue(null);
             dateiAntwort = null;
+        }
+        synchronized (speicherLock) {
+            if (zuSpeichern != null) {
+                //noinspection ResultOfMethodCallIgnored
+                zuSpeichern.delete();
+                zuSpeichern = null;
+            }
         }
         if (web != null) {
             web.destroy();
@@ -217,8 +232,9 @@ public class MainActivity extends Activity {
                 if (istLokal(uri)) {
                     return false;
                 }
-                if (istWeb(uri)) {
-                    oeffneImBrowser(uri);
+                String schema = uri.getScheme();
+                if ("http".equalsIgnoreCase(schema) || "https".equalsIgnoreCase(schema)) {
+                    oeffneImBrowser(uri.toString());
                 }
                 return true;
             }
@@ -244,6 +260,17 @@ public class MainActivity extends Activity {
 
         web.setWebChromeClient(new WebChromeClient() {
             @Override
+            public boolean onConsoleMessage(ConsoleMessage nachricht) {
+                String text = String.valueOf(nachricht.message()).replace('\n', ' ').replace('\r', ' ');
+                if (text.length() > KONSOLE_MAX) {
+                    text = text.substring(0, KONSOLE_MAX);
+                }
+                // Ohne Quelladresse: Sie enthaelt den Token.
+                Log.i(TAG, "js: " + text);
+                return true;
+            }
+
+            @Override
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> antwort,
                                              FileChooserParams params) {
                 if (dateiAntwort != null) {
@@ -262,28 +289,20 @@ public class MainActivity extends Activity {
     }
 
     private static boolean istLokal(Uri uri) {
-        if (uri == null || !"http".equals(uri.getScheme())) {
-            return false;
-        }
-        String host = uri.getHost();
-        if (!"127.0.0.1".equals(host) && !"localhost".equals(host)) {
-            return false;
-        }
-        int port = serverPort;
-        return port != 0 && uri.getPort() == port;
+        return uri != null && UrlRegeln.istEigeneSeite(uri.toString(), serverPort);
     }
 
-    private static boolean istWeb(Uri uri) {
-        if (uri == null) {
-            return false;
+    private void oeffneImBrowser(String url) {
+        String adresse = UrlRegeln.externeAdresse(url);
+        if (adresse == null) {
+            Log.w(TAG, "adresse nicht geoeffnet");
+            zeigeToast("Diese Adresse wird nicht ge\u00f6ffnet.");
+            return;
         }
-        String schema = uri.getScheme();
-        return ("http".equals(schema) || "https".equals(schema)) && uri.getHost() != null;
-    }
-
-    private void oeffneImBrowser(Uri uri) {
         try {
-            startActivity(new Intent(Intent.ACTION_VIEW, uri));
+            Intent oeffnen = new Intent(Intent.ACTION_VIEW, Uri.parse(adresse));
+            oeffnen.addCategory(Intent.CATEGORY_BROWSABLE);
+            startActivity(oeffnen);
         } catch (ActivityNotFoundException e) {
             zeigeToast("Kein Browser gefunden.");
         }
@@ -308,17 +327,53 @@ public class MainActivity extends Activity {
             }
             return;
         }
+        if (requestCode == REQ_SPEICHERN) {
+            File datei;
+            synchronized (speicherLock) {
+                datei = zuSpeichern;
+                zuSpeichern = null;
+            }
+            if (datei == null) {
+                return;
+            }
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                Uri ziel = data.getData();
+                arbeit.execute(() -> kopiereNach(datei, ziel));
+            } else {
+                //noinspection ResultOfMethodCallIgnored
+                datei.delete();
+            }
+            return;
+        }
         super.onActivityResult(requestCode, resultCode, data);
     }
 
     // ---------------------------------------------------------------- Aktionen
+
+    /** Die Grenze, die auch der Server fuer Uploads setzt (recherche.web.MAX_LADEN). */
+    private long maxLaden() {
+        try {
+            return recherchWeb().get("MAX_LADEN").toLong();
+        } catch (Exception e) {
+            Log.w(TAG, "MAX_LADEN nicht lesbar, Standard");
+            return MAX_LADEN_STANDARD;
+        }
+    }
+
+    private static final class ZuGrossException extends IOException {
+        ZuGrossException() {
+            super("zu gross");
+        }
+    }
 
     private void importiere(Uri quelle) {
         File ordner = new File(getCacheDir(), "import");
         //noinspection ResultOfMethodCallIgnored
         ordner.mkdirs();
         File ziel = new File(ordner, "import-" + System.currentTimeMillis() + ".zip");
+        long grenze = maxLaden();
         try {
+            long gesamt = 0;
             try (InputStream in = getContentResolver().openInputStream(quelle);
                  OutputStream out = new FileOutputStream(ziel)) {
                 if (in == null) {
@@ -327,11 +382,15 @@ public class MainActivity extends Activity {
                 byte[] puffer = new byte[64 * 1024];
                 int n;
                 while ((n = in.read(puffer)) > 0) {
+                    gesamt += n;
+                    if (gesamt > grenze) {
+                        throw new ZuGrossException();
+                    }
                     out.write(puffer, 0, n);
                 }
             }
             PyObject ergebnis = recherchWeb().callAttr("importiere", ziel.getAbsolutePath());
-            zeigeToast(String.valueOf(ergebnis));
+            zeigeMeldung(String.valueOf(ergebnis));
             runOnUiThread(() -> {
                 if (!isDestroyed()) {
                     web.evaluateJavascript(
@@ -339,34 +398,46 @@ public class MainActivity extends Activity {
                             null);
                 }
             });
+        } catch (ZuGrossException e) {
+            Log.w(TAG, "import abgelehnt: zu gross");
+            zeigeMeldung("Die Datei ist zu gro\u00df (h\u00f6chstens " + (grenze / (1024 * 1024)) + " MB).");
         } catch (PyException e) {
             Log.w(TAG, "import fehlgeschlagen");
-            zeigeToast("Import fehlgeschlagen: " + e.getMessage());
+            zeigeMeldung("Import fehlgeschlagen: " + e.getMessage());
         } catch (Exception e) {
             Log.w(TAG, "import fehlgeschlagen: " + e.getClass().getSimpleName());
-            zeigeToast("Import fehlgeschlagen: " + e.getMessage());
+            zeigeMeldung("Import fehlgeschlagen: " + e.getMessage());
         } finally {
             //noinspection ResultOfMethodCallIgnored
             ziel.delete();
         }
     }
 
+    /** Ruft die Python-Funktion auf und prueft, dass die Datei wirklich im Exportordner liegt. */
+    private File erzeugeDatei(String funktion, String slug, File ordner) throws IOException {
+        //noinspection ResultOfMethodCallIgnored
+        ordner.mkdirs();
+        PyObject ergebnis = recherchWeb().callAttr(funktion, slug, ordner.getAbsolutePath());
+        File datei = new File(String.valueOf(ergebnis)).getCanonicalFile();
+        if (!datei.getPath().startsWith(ordner.getCanonicalPath() + File.separator) || !datei.isFile()) {
+            throw new IOException("Datei liegt nicht im Exportverzeichnis");
+        }
+        return datei;
+    }
+
+    private static String mimeVon(File datei) {
+        String endung = MimeTypeMap.getFileExtensionFromUrl(datei.getName());
+        String typ = endung == null ? null
+                : MimeTypeMap.getSingleton().getMimeTypeFromExtension(endung.toLowerCase(Locale.ROOT));
+        return typ != null ? typ : "application/octet-stream";
+    }
+
     private void teile(String funktion, String slug, File ordner, String fehlerText) {
         try {
-            //noinspection ResultOfMethodCallIgnored
-            ordner.mkdirs();
-            PyObject ergebnis = recherchWeb().callAttr(funktion, slug, ordner.getAbsolutePath());
-            File datei = new File(String.valueOf(ergebnis)).getCanonicalFile();
-            if (!datei.getPath().startsWith(ordner.getCanonicalPath() + File.separator)
-                    || !datei.isFile()) {
-                throw new IOException("Datei liegt nicht im Exportverzeichnis");
-            }
+            File datei = erzeugeDatei(funktion, slug, ordner);
             Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", datei);
-            String endung = MimeTypeMap.getFileExtensionFromUrl(datei.getName());
-            String typ = endung == null ? null
-                    : MimeTypeMap.getSingleton().getMimeTypeFromExtension(endung.toLowerCase(Locale.ROOT));
             Intent senden = new Intent(Intent.ACTION_SEND);
-            senden.setType(typ != null ? typ : "application/octet-stream");
+            senden.setType(mimeVon(datei));
             senden.putExtra(Intent.EXTRA_STREAM, uri);
             senden.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             Intent auswahl = Intent.createChooser(senden, null);
@@ -379,10 +450,69 @@ public class MainActivity extends Activity {
             });
         } catch (PyException e) {
             Log.w(TAG, fehlerText);
-            zeigeToast(fehlerText + ": " + e.getMessage());
+            zeigeMeldung(fehlerText + ": " + e.getMessage());
         } catch (Exception e) {
             Log.w(TAG, fehlerText + ": " + e.getClass().getSimpleName());
-            zeigeToast(fehlerText + ": " + e.getMessage());
+            zeigeMeldung(fehlerText + ": " + e.getMessage());
+        }
+    }
+
+    /** Erzeugt die Datei und oeffnet den Systemdialog "Speichern unter". Kopiert wird danach. */
+    private void speichere(String funktion, String slug, File ordner, String fehlerText) {
+        try {
+            File datei = erzeugeDatei(funktion, slug, ordner);
+            File alt;
+            synchronized (speicherLock) {
+                alt = zuSpeichern;
+                zuSpeichern = datei;
+            }
+            if (alt != null && !alt.equals(datei)) {
+                //noinspection ResultOfMethodCallIgnored
+                alt.delete();
+            }
+            Intent wahl = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            wahl.addCategory(Intent.CATEGORY_OPENABLE);
+            wahl.setType(mimeVon(datei));
+            wahl.putExtra(Intent.EXTRA_TITLE, datei.getName());
+            runOnUiThread(() -> {
+                try {
+                    startActivityForResult(wahl, REQ_SPEICHERN);
+                } catch (ActivityNotFoundException e) {
+                    synchronized (speicherLock) {
+                        zuSpeichern = null;
+                    }
+                    //noinspection ResultOfMethodCallIgnored
+                    datei.delete();
+                    zeigeToast("Keine Dateiauswahl gefunden.");
+                }
+            });
+        } catch (PyException e) {
+            Log.w(TAG, fehlerText);
+            zeigeMeldung(fehlerText + ": " + e.getMessage());
+        } catch (Exception e) {
+            Log.w(TAG, fehlerText + ": " + e.getClass().getSimpleName());
+            zeigeMeldung(fehlerText + ": " + e.getMessage());
+        }
+    }
+
+    private void kopiereNach(File datei, Uri ziel) {
+        try (InputStream in = new java.io.FileInputStream(datei);
+             OutputStream out = getContentResolver().openOutputStream(ziel, "wt")) {
+            if (out == null) {
+                throw new IOException("Ziel nicht schreibbar");
+            }
+            byte[] puffer = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(puffer)) > 0) {
+                out.write(puffer, 0, n);
+            }
+            zeigeToast("Gespeichert");
+        } catch (Exception e) {
+            Log.w(TAG, "speichern fehlgeschlagen: " + e.getClass().getSimpleName());
+            zeigeMeldung("Speichern fehlgeschlagen: " + e.getMessage());
+        } finally {
+            //noinspection ResultOfMethodCallIgnored
+            datei.delete();
         }
     }
 
@@ -392,6 +522,19 @@ public class MainActivity extends Activity {
 
     private void zeigeToast(String text) {
         runOnUiThread(() -> Toast.makeText(this, text, Toast.LENGTH_LONG).show());
+    }
+
+    /** Kurze Texte als langer Toast, lange als Dialog: Ein Toast schneidet sie ab. */
+    private void zeigeMeldung(String text) {
+        if (text.length() <= TOAST_MAX) {
+            zeigeToast(text);
+            return;
+        }
+        runOnUiThread(() -> {
+            if (!isFinishing() && !isDestroyed()) {
+                new AlertDialog.Builder(this).setMessage(text).setPositiveButton("OK", null).show();
+            }
+        });
     }
 
     private static boolean slugOk(String slug) {
@@ -442,17 +585,28 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void oeffneExtern(String url) {
-            Uri uri = url == null ? null : Uri.parse(url);
-            // Nicht die eigene Seite (mit Token) in den Browser geben.
-            if (istWeb(uri) && !istLokalerHost(uri)) {
-                runOnUiThread(() -> oeffneImBrowser(uri));
+        public void speichern(String slug) {
+            if (!slugOk(slug)) {
+                zeigeToast("Ung\u00fcltiger Fallname.");
+                return;
             }
+            arbeit.execute(() -> speichere("exportiere", slug, new File(getCacheDir(), "export"),
+                    "Speichern fehlgeschlagen"));
         }
-    }
 
-    private static boolean istLokalerHost(Uri uri) {
-        String host = uri.getHost();
-        return "127.0.0.1".equals(host) || "localhost".equals(host);
+        @JavascriptInterface
+        public void dossierSpeichern(String slug) {
+            if (!slugOk(slug)) {
+                zeigeToast("Ung\u00fcltiger Fallname.");
+                return;
+            }
+            arbeit.execute(() -> speichere("dossier_datei", slug, new File(getCacheDir(), "export"),
+                    "Dossier speichern fehlgeschlagen"));
+        }
+
+        @JavascriptInterface
+        public void oeffneExtern(String url) {
+            runOnUiThread(() -> oeffneImBrowser(url));
+        }
     }
 }

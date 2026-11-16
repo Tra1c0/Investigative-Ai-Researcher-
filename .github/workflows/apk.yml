@@ -13,9 +13,13 @@ permissions:
   contents: read
 
 env:
-  # "0": der Starttest verlangt nur, dass Python und das Paket starten.
-  # "1": zusaetzlich 'recherche: server ok' und der Text 'Fälle' in der Oberfläche.
+  # Strenge des Starttests. "0": verlangt nur, dass Python und das Paket starten; die
+  # Oberflächenwerte werden gemessen und ausgegeben. "1": zusätzlich 'recherche: server ok'
+  # und mindestens einer der Werte ui_dump (Überschrift im uiautomator-Dump) oder ui_js
+  # (die Seite meldet 'oberflaeche bereit').
   UI_PFLICHT: "0"
+  # Ob der Job 'veroeffentlichen' die APK als öffentliche Vorabversion bereitstellt.
+  VEROEFFENTLICHEN: "0"
 
 jobs:
   tests:
@@ -26,6 +30,13 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
+      # Dieselbe Version wie in der App; die PDF-Tests werden ohne pypdf übersprungen.
+      - name: pypdf in der Version der App installieren
+        run: |
+          ver=$(grep -oP "pypdf==\K[0-9][0-9A-Za-z.]*" android/app/build.gradle)
+          if [ -z "$ver" ]; then echo "Keine pypdf-Version in android/app/build.gradle"; exit 1; fi
+          echo "pypdf==$ver"
+          python3 -m pip install "pypdf==$ver"
       - name: Tests
         run: python3 -m unittest discover -s tests
 
@@ -117,13 +128,14 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      # Eine öffentliche Vorabversion enthält nur Builds, deren Oberfläche geprüft wurde.
+      # Eine öffentliche Vorabversion gibt es nur, wenn VEROEFFENTLICHEN "1" ist, also erst mit
+      # geprüfter Oberfläche.
       # Der env-Kontext gilt nicht in 'if' auf Job-Ebene, deshalb der Umweg über einen Output.
-      - name: Oberflächenprüfung verlangt?
+      - name: Veröffentlichung verlangt?
         id: ui
         run: |
-          echo "pflicht=$UI_PFLICHT" >> "$GITHUB_OUTPUT"
-          if [ "$UI_PFLICHT" != "1" ]; then
+          echo "pflicht=$VEROEFFENTLICHEN" >> "$GITHUB_OUTPUT"
+          if [ "$VEROEFFENTLICHEN" != "1" ]; then
             echo "Vorabversion wird erst mit geprüfter Oberfläche veröffentlicht."
           fi
       - uses: actions/download-artifact@v8
