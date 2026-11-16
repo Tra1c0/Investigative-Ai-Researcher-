@@ -611,6 +611,14 @@ class Loeschen(WebTest):
         self.assertEqual(sorted(os.listdir(self.wurzel)), ["t", "u"])
         self.assertEqual(len(self.export_http()["quellen"]), 1)
 
+    def test_unvollstaendiges_entfernen_wird_gemeldet(self):
+        self.zwei_faelle()
+        with mock.patch.object(web.shutil, "rmtree", lambda *a, **k: None):
+            status, antwort = self.loeschen("t", "t")
+        self.assertEqual(status, 500)
+        self.assertIn("nicht alle seine Dateien", antwort["fehler"])
+        self.assertEqual(json.loads(self.http("GET", "/api/faelle")[2]), [{"slug": "u", "titel": "Zweiter"}])
+
     def test_richtige_bestaetigung_entfernt_nur_diesen_fall(self):
         self.zwei_faelle()
         status, antwort = self.loeschen("t", "t")

@@ -1,9 +1,5 @@
 """Bewertung: Statusregeln für Behauptungen, Unabhängigkeit der Quellen, Integritätsprüfung, Export."""
 
-import shutil
-import sqlite3
-from pathlib import Path
-
 from . import quellen as q
 from .store import (BEHAUPTUNGS_STATUS, Fall, Fehler, PRUEFBARE_STATUS, jetzt, lade_fall,
                     zu_dict, zu_liste)
@@ -117,10 +113,15 @@ def obergrenze(art, zuschreibung, pro, quellen_nach_id, gruppen, aus_stati):
 # ===========================================================================
 
 class Kontext:
-    """Momentaufnahme aller Objekte eines Falls (einmal gelesen, vielfach genutzt)."""
+    """Momentaufnahme aller Objekte eines Falls (einmal gelesen, vielfach genutzt).
 
-    def __init__(self, fall):
+    `zitate`: Ein Beleg zählt für die Obergrenze nur, wenn sein Zitat im gespeicherten Text
+    steht. Das kostet je Quelle eine Normalisierung des Textes; nur die Nachführung nach
+    gewöhnlichen Änderungen schaltet es ab, weil kein Befehl ein Zitat ungültig machen kann."""
+
+    def __init__(self, fall, zitate=True):
         self.fall = fall
+        self.zitate = zitate
         self.quellen = {x["id"]: x for x in fall.alle("quelle")}
         self.gruppen = unabhaengigkeitsgruppen(list(self.quellen.values()))
         self.belege = {x["id"]: x for x in fall.alle("beleg")}
@@ -135,12 +136,34 @@ class Kontext:
     def belege_von(self, liste):
         return [self.belege[i] for i in liste]
 
+    def kreis(self, aid):
+        """Der Weg, auf dem eine Behauptung über ihre Prämissen wieder bei sich ankommt, sonst None."""
+        offen, gesehen = [(i, [aid, i]) for i in self.aus.get(aid, [])], set()
+        while offen:
+            knoten, weg = offen.pop()
+            if knoten == aid:
+                return weg
+            if knoten not in gesehen:
+                gesehen.add(knoten)
+                offen.extend((i, weg + [i]) for i in self.aus.get(knoten, []))
+        return None
+
     def obergrenze(self, behauptung):
         aid = behauptung["id"]
+        if behauptung["art"] == "schlussfolgerung":
+            kreis = self.kreis(aid)
+            if kreis:
+                # Zwei Schlussfolgerungen, die sich gegenseitig stützen, stützen sich auf nichts.
+                return "unbestaetigt", "Prämissen hängen im Kreis voneinander ab: " + " → ".join(kreis)
         aus_stati = [(i, self.behauptungen[i]["status"]) for i in self.aus.get(aid, [])]
-        return obergrenze(behauptung["art"], bool(behauptung["zuschreibung"]),
-                          self.belege_von(self.pro.get(aid, [])), self.quellen, self.gruppen,
-                          aus_stati)
+        pro = self.belege_von(self.pro.get(aid, []))
+        ungueltig = [b["id"] for b in pro if not self.zitat_ok(b)] if self.zitate else []
+        grenze, grund = obergrenze(behauptung["art"], bool(behauptung["zuschreibung"]),
+                                   [b for b in pro if b["id"] not in ungueltig], self.quellen,
+                                   self.gruppen, aus_stati)
+        if ungueltig:
+            grund += "; nicht gezählt, weil das Zitat nicht im gespeicherten Text steht: " + ", ".join(ungueltig)
+        return grenze, grund
 
     def normtext(self, quelle_id):
         if quelle_id not in self._normtexte:
@@ -188,12 +211,15 @@ def zuruecksetzen(fall, behauptung_id):
     return war_geprueft
 
 
-def status_unzulaessig(art, status, kontext, behauptung):
+def status_unzulaessig(kontext, behauptung, widerspruch=False):
     """Warum der Status der Behauptung nicht stehen darf, sonst None.
 
     Eine Stelle für die Nachführung nach Änderungen, das Laden einer Akte und `pruefe`:
     bekannter Status, Bewertung nur als Werturteil, Werturteil nur bei Bewertungen, belegt
-    und gestützt höchstens bis zur Obergrenze."""
+    und gestützt höchstens bis zur Obergrenze. Mit `widerspruch` auch die Regel aus
+    `pruefe_status`, dass ein ungeklärter Gegenbeleg belegt und gestützt ausschließt; `pruefe`
+    meldet das schon als WIDERSPRUCH und fragt deshalb ohne."""
+    art, status = behauptung["art"], behauptung["status"]
     if status not in BEHAUPTUNGS_STATUS:
         return "unbekannter Status %r" % status
     if art == "bewertung":
@@ -204,23 +230,32 @@ def status_unzulaessig(art, status, kontext, behauptung):
         grenze, grund = kontext.obergrenze(behauptung)
         if RANG[status] > RANG[grenze]:
             return "Status %s liegt über der Obergrenze %s (%s)" % (status, grenze, grund)
+        contra = kontext.contra.get(behauptung["id"], [])
+        if widerspruch and contra and not behauptung["klaerung"].strip():
+            return "Status %s trotz ungeklärtem Gegenbeleg (%s)" % (status, ", ".join(contra))
     return None
 
 
-def _nachziehen(fall):
-    """Setzt jede Behauptung mit unzulässigem Status zurück; gibt [(ID, Grund)] zurück."""
-    zurueckgesetzt = []
-    geaendert = True
-    while geaendert:
-        geaendert = False
-        kontext = Kontext(fall)
-        for a in kontext.behauptungen.values():
-            grund = status_unzulaessig(a["art"], a["status"], kontext, a)
-            if grund:
-                zuruecksetzen(fall, a["id"])
-                zurueckgesetzt.append((a["id"], grund))
-                geaendert = True
-    return zurueckgesetzt
+def _nachziehen(fall, streng=False):
+    """Setzt jede Behauptung mit unzulässigem Status zurück; gibt [(ID, Grund)] zurück.
+
+    `streng` (Laden einer Akte): Zitate werden am gespeicherten Text geprüft, und ein
+    ungeklärter Gegenbeleg zählt. Jede Behauptung wird höchstens einmal zurückgesetzt. Ist sie
+    danach noch unzulässig, stimmt die Akte in sich nicht, und das ist ein Fehler statt einer
+    Schleife ohne Ende."""
+    zurueckgesetzt, erledigt = [], set()
+    while True:
+        kontext = Kontext(fall, zitate=streng)
+        faellig = [(a["id"], grund) for a in kontext.behauptungen.values()
+                   for grund in [status_unzulaessig(kontext, a, widerspruch=streng)] if grund]
+        if not faellig:
+            return zurueckgesetzt
+        for aid, grund in faellig:
+            if aid in erledigt:
+                raise Fehler("Behauptung %s bleibt nach dem Zurücksetzen unzulässig (%s)" % (aid, grund))
+            erledigt.add(aid)
+            zuruecksetzen(fall, aid)
+            zurueckgesetzt.append((aid, grund))
 
 
 def obergrenzen_nachziehen(fall):
@@ -230,25 +265,27 @@ def obergrenzen_nachziehen(fall):
 
 
 def lade_akte(wurzel, archivpfad, wer, herkunft):
-    """Lädt eine gesicherte Akte und prüft sie sofort: Ein Archiv kann Status tragen, die die
-    Belege nicht tragen. Gibt (Slug, [(ID, Grund)]) der zurückgesetzten Behauptungen zurück.
-    Einziger Weg, eine Akte zu laden."""
-    wurzel = Path(wurzel)
-    slug = lade_fall(wurzel, archivpfad)
-    try:
-        fall = Fall.oeffnen(wurzel, slug, wer)
+    """Lädt eine gesicherte Akte und prüft sie dabei: Ein Archiv ist eine fremde Datei und kann
+    Status tragen, die die Belege nicht tragen. Gibt (Slug, [(ID, Grund)]) der zurückgesetzten
+    Behauptungen zurück. Einziger Weg, eine Akte zu laden.
+
+    Geprüft wird, solange die Akte noch im Arbeitsverzeichnis liegt (`store.lade_fall`): Status
+    zurücksetzen, dann einmal alles ausgeben. Was sich nicht prüfen oder nicht ausgeben lässt,
+    erreicht das Fallverzeichnis nicht."""
+    zurueck = []
+
+    def pruefung(verzeichnis, slug):
+        fall = Fall.oeffnen(verzeichnis, slug, wer)
         try:
             fall.conn.execute("PRAGMA journal_mode=WAL")
             with fall.schreiben():
                 fall.log("fall laden", slug, herkunft)
-                zurueck = _nachziehen(fall)
+                zurueck.extend(_nachziehen(fall, streng=True))
+            export_daten(fall)
         finally:
             fall.conn.close()
-    except (sqlite3.Error, KeyError, ValueError, TypeError, OSError) as fehler:
-        shutil.rmtree(str(wurzel / slug), ignore_errors=True)
-        raise Fehler("Die Akte im Archiv ist beschädigt oder unvollständig (%s); nichts wurde geladen."
-                     % fehler)
-    return slug, zurueck
+
+    return lade_fall(wurzel, archivpfad, pruefung), zurueck
 
 
 def nach_aenderung(fall, behauptung_id=None):
@@ -304,7 +341,7 @@ def _unbelegt(k):
 def _status(k):
     probleme = []
     for a in k.behauptungen.values():
-        grund = status_unzulaessig(a["art"], a["status"], k, a)
+        grund = status_unzulaessig(k, a)
         if grund:
             probleme.append(_problem("sperre", "STATUS", a["id"], grund))
     return probleme

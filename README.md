@@ -49,7 +49,7 @@ Die Fallakte hat eine Oberfläche, die ohne Claude auskommt. Sie zeigt Fälle, d
 In der App steckt keine KI. Ein eigenes Programm kann das Claude-Abo nicht nutzen, die Rollen laufen deshalb weiter in Claude Code (E-009). Zwischen beiden wandert die Akte als Datei:
 
 1. In der Sitzung `python3 -m recherche fall sichern`, die Zip-Datei aufs Telefon.
-2. In der App „Akte laden“. Dabei prüft die App jede Behauptung neu: Ein Status, den die Belege der Akte nicht tragen, fällt auf „ungeprüft“ zurück.
+2. In der App „Akte laden“. Dabei prüft die App die Akte, bevor sie sie annimmt: Ein Status, den die Belege nicht tragen, fällt auf „ungeprüft“ zurück, und eine Datei, die nicht wie eine Fallakte aufgebaut ist, wird abgelehnt.
 3. Zurück mit „Akte sichern“ in der App und `python3 -m recherche fall laden <datei>` in der Sitzung.
 
 Einen Fall, den es auf dem Gerät schon gibt, lädt die App nicht ein zweites Mal. Er muss dort erst gelöscht werden („Fall löschen“ im Überblick des Falls).
@@ -60,7 +60,7 @@ Die App speichert Akten nur im eigenen Speicherbereich, schließt sie von der Cl
 
 ## Voraussetzungen
 
-- Claude Code und Python ab 3.9. Für PDFs `pdftotext` oder `pypdf`, sonst nichts.
+- Claude Code und Python ab 3.10. Für PDFs `pdftotext` oder `pypdf`, sonst nichts.
 - **Netzzugriff auf die Seiten, die gelesen werden sollen.** In einer Cloud-Sitzung mit eingeschränktem Netz kann die App keine Quellen sichern und damit nichts belegen. Die Websuche allein reicht nicht, weil Suchtreffer keinen Wortlaut garantieren.
 - Fallakten liegen unter `faelle/` und werden nicht ins Git übernommen. Sie können Namen und Vorwürfe enthalten.
 

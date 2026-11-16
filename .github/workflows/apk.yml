@@ -28,8 +28,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.13 ist das Python der App, 3.9 das älteste, das die README zusagt.
-        python: ["3.9", "3.13"]
+        # 3.13 ist das Python der App, 3.10 das älteste, das der Runner anbietet und die README
+        # zusagt, 3.15 das neueste: argparse hat sich zwischen den Versionen geändert, und daran
+        # hängt die Befehlsprüfung der Oberfläche.
+        python: ["3.10", "3.13", "3.15"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

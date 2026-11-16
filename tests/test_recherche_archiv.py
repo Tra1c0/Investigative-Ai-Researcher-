@@ -5,6 +5,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import time
 import zipfile
 from types import SimpleNamespace
 from unittest import mock
@@ -234,3 +235,155 @@ class Fallliste(FallTest):
             os.mkdir(os.path.join(self.wurzel, name))
             shutil.copy(os.path.join(self.wurzel, "t", "fall.db"), os.path.join(self.wurzel, name, "fall.db"))
         self.assertEqual(store.faelle_liste(self.wurzel), ["t"])
+
+
+class FeindlicheAkte(ArchivHilfen, FallTest):
+    """Zustände, die kein Befehl herstellen kann, ein präpariertes Archiv aber schon."""
+
+    TEXT = "Er sagte klar und deutlich: Das ist belegt genug, wirklich. Mehr nicht."
+    ZITAT = "Das ist belegt genug, wirklich."
+
+    def grundfall(self):
+        self.neuer_fall("t")
+        qid = self.quelle(self.TEXT, typ="amtlich", zuv="A")
+        bid = self.beleg(qid, self.ZITAT, direkt=True)
+        aid = self.behauptung("Eine Tatsache", "tatsache", "--pro", bid)
+        self.ok("behauptung", "pruefen", aid, "--status", "belegt", "--vermerk", "ok", "--pruefer", "p")
+        return qid, bid, aid
+
+    def sql(self, *anweisungen):
+        db = sqlite3.connect(os.path.join(self.wurzel, "t", "fall.db"))
+        with db:
+            for anweisung in anweisungen:
+                db.execute(anweisung)
+        db.close()
+
+    def archiv_und_weg(self):
+        archiv = self.gesichertes_archiv("t")
+        shutil.rmtree(os.path.join(self.wurzel, "t"))
+        return archiv
+
+    def abgelehnt(self, archiv, teil):
+        ergebnis = self.fehler("fall", "laden", archiv)
+        self.assertIn(teil, ergebnis.err)
+        self.assertIn("nichts wurde geladen", ergebnis.err)
+        self.assertEqual(os.listdir(self.wurzel), [])
+
+    def test_ids_die_sich_nur_in_der_schreibung_unterscheiden(self):
+        # `hole` schreibt IDs groß: Das Zurücksetzen von a1 traf A1, a1 blieb belegt, ohne Ende.
+        self.grundfall()
+        self.sql("INSERT INTO behauptung (id, text, art, status) VALUES ('a1', 'Zweite', 'tatsache', 'belegt')")
+        self.abgelehnt(self.archiv_und_weg(), "unzulässige ID in behauptung")
+
+    def test_zuruecksetzen_endet_auch_bei_widerspruechlichen_daten(self):
+        self.grundfall()
+        self.sql("UPDATE behauptung SET status = 'ungeprueft', pruefer = '', geprueft = NULL WHERE id = 'A1'",
+                 "INSERT INTO behauptung (id, text, art, status) VALUES ('a1', 'Zweite', 'tatsache', 'belegt')")
+        fall = store.Fall.oeffnen(self.wurzel, "t", "tester")
+        self.addCleanup(fall.conn.close)
+        with self.assertRaisesRegex(store.Fehler, "bleibt nach dem Zurücksetzen unzulässig"):
+            with fall.schreiben():
+                bewertung._nachziehen(fall, streng=True)
+
+    def test_verweis_der_kein_objekt_meint(self):
+        # Aus der Quellen-ID wird ein Verzeichnisname.
+        self.grundfall()
+        self.sql("UPDATE beleg SET quelle = '../../anderswo'")
+        self.abgelehnt(self.archiv_und_weg(), "unzulässiger Verweis in beleg.quelle")
+
+    def test_zaehler_unter_der_hoechsten_id(self):
+        self.grundfall()
+        self.sql("UPDATE zaehler SET n = 0 WHERE praefix = 'A'")
+        self.abgelehnt(self.archiv_und_weg(), "Zähler für A")
+
+    def test_unlesbare_liste(self):
+        self.grundfall()
+        self.ok("hypothese", "neu", "--text", "Eine Hypothese", "--prueft", "a", "--widerlegt", "b")
+        self.sql("UPDATE hypothese SET prueft = '{\"kein\": \"Liste\"}'")
+        self.abgelehnt(self.archiv_und_weg(), "Liste oder Zuordnung in hypothese")
+
+    def test_kurzname_in_der_akte_passt_nicht(self):
+        self.grundfall()
+        self.sql("UPDATE meta SET wert = 'anders' WHERE schluessel = 'slug'")
+        self.abgelehnt(self.archiv_und_weg(), "Kurzname in der Akte passt nicht")
+
+    def test_wert_vom_falschen_typ_trotz_richtigem_schematext(self):
+        # Die Prüfung des Schemas sieht nur den Text in sqlite_master, nicht die gespeicherten Werte.
+        self.grundfall()
+        pfad = os.path.join(self.wurzel, "t", "fall.db")
+        try:
+            db = sqlite3.connect(pfad)
+            original = db.execute("SELECT sql FROM sqlite_master WHERE name = 'quelle'").fetchone()[0]
+            self.assertIn("ursprung TEXT NOT NULL", original)
+            db.execute("PRAGMA writable_schema = ON")
+            db.execute("UPDATE sqlite_master SET sql = ? WHERE name = 'quelle'",
+                       (original.replace("ursprung TEXT NOT NULL", "ursprung NOT NULL"),))
+            db.commit()
+            db.close()
+            db = sqlite3.connect(pfad)
+            db.execute("UPDATE quelle SET ursprung = 42")
+            db.commit()
+            db.execute("PRAGMA writable_schema = ON")
+            db.execute("UPDATE sqlite_master SET sql = ? WHERE name = 'quelle'", (original,))
+            db.commit()
+            db.close()
+            db = sqlite3.connect(pfad)
+            typ = db.execute("SELECT typeof(ursprung) FROM quelle").fetchone()[0]
+            db.close()
+        except sqlite3.Error as fehler:
+            self.skipTest("Diese SQLite-Fassung lässt das Umschreiben des Schemas nicht zu: %s" % fehler)
+        if typ != "integer":
+            self.skipTest("Der Wert wurde nicht als Zahl gespeichert")
+        self.abgelehnt(self.archiv_und_weg(), "Werte vom falschen Typ")
+
+    def test_schlussfolgerungen_im_kreis_stuetzen_sich_nicht(self):
+        _qid, _bid, a1 = self.grundfall()
+        a2 = self.behauptung("Folgerung eins", "schlussfolgerung", "--aus", a1)
+        a3 = self.behauptung("Folgerung zwei", "schlussfolgerung", "--aus", a2)
+        self.sql("DELETE FROM verknuepfung WHERE art = 'aus' AND von = '%s'" % a2,
+                 "INSERT INTO verknuepfung (art, von, zu) VALUES ('aus', '%s', '%s')" % (a2, a3),
+                 "UPDATE behauptung SET status = 'gestuetzt', pruefer = 'x', geprueft = '2026-01-01T00:00:00Z' "
+                 "WHERE id IN ('%s', '%s')" % (a2, a3))
+        probleme = [p for p in self.export()["probleme"] if p["art"] == "STATUS"]
+        self.assertEqual(sorted(p["objekt"] for p in probleme), [a2, a3])
+        self.assertIn("im Kreis", probleme[0]["text"])
+        self.ok("fall", "laden", self.archiv_und_weg())
+        self.assertEqual((self.status(a1), self.status(a2), self.status(a3)), ("belegt", "ungeprueft", "ungeprueft"))
+
+    def test_beleg_dessen_zitat_nicht_im_text_steht_traegt_nichts(self):
+        qid, bid, aid = self.grundfall()
+        with open(os.path.join(self.wurzel, "t", "quellen", qid, "text.txt"), "w", encoding="utf-8") as datei:
+            datei.write("Hier steht etwas ganz anderes, und zwar ausführlich genug.")
+        daten = self.export()
+        behauptung = [a for a in daten["behauptungen"] if a["id"] == aid][0]
+        self.assertEqual(behauptung["obergrenze"], "unbestaetigt")
+        self.assertIn("nicht gezählt, weil das Zitat nicht im gespeicherten Text steht: " + bid,
+                      behauptung["obergrenze_grund"])
+        sperren = {p["art"]: p["objekt"] for p in daten["probleme"] if p["stufe"] == "sperre"}
+        self.assertEqual((sperren.get("ZITAT"), sperren.get("STATUS")), (bid, aid))
+        self.fehler("behauptung", "pruefen", aid, "--status", "belegt", "--vermerk", "x", "--pruefer", "p")
+        ergebnis = self.ok("fall", "laden", self.archiv_und_weg())
+        self.assertIn("hinweis: Prüfung zurückgesetzt: %s (Status belegt liegt über der Obergrenze" % aid, ergebnis.out)
+        self.assertEqual(self.status(aid), "ungeprueft")
+
+    def test_ungeklaerter_gegenbeleg_laesst_belegt_nicht_stehen(self):
+        qid, _bid, aid = self.grundfall()
+        gegen = self.beleg(qid, "Er sagte klar und deutlich")
+        self.sql("INSERT INTO verknuepfung (art, von, zu) VALUES ('contra', '%s', '%s')" % (aid, gegen))
+        ergebnis = self.ok("fall", "laden", self.archiv_und_weg())
+        self.assertIn("hinweis: Prüfung zurückgesetzt: %s (Status belegt trotz ungeklärtem Gegenbeleg (%s))"
+                      % (aid, gegen), ergebnis.out)
+        self.assertEqual(self.status(aid), "ungeprueft")
+
+
+class Arbeitsverzeichnisse(FallTest):
+    def test_alte_reste_werden_entfernt_frische_bleiben(self):
+        self.neuer_fall("t")
+        vor_zwei_stunden = time.time() - 7200
+        for name, alt in ((".laden-alt", True), (".loeschen-alt", True), (".upload-frisch", False), (".anderes", True)):
+            pfad = os.path.join(self.wurzel, name)
+            os.makedirs(os.path.join(pfad, "t"))
+            if alt:
+                os.utime(pfad, (vor_zwei_stunden, vor_zwei_stunden))
+        store.raeume_arbeitsverzeichnisse(self.wurzel)
+        self.assertEqual(sorted(os.listdir(self.wurzel)), [".anderes", ".upload-frisch", "t"])

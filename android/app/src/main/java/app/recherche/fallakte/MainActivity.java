@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.provider.DocumentsContract;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
@@ -57,6 +58,7 @@ public class MainActivity extends Activity {
     private static final int REQ_DATEI = 1002;
     private static final int REQ_SPEICHERN = 1003;
     private static final long MAX_LADEN_STANDARD = 512L * 1024 * 1024;
+    private static final String STATE_ZU_SPEICHERN = "zuSpeichern";
     private static final int KONSOLE_MAX = 300;
     private static final int TOAST_MAX = 160;
     private static final long MAX_ALTER_MS = 24L * 60 * 60 * 1000;
@@ -77,6 +79,17 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // Eine ausstehende Datei ueberlebt, dass Android die Activity waehrend des Systemdialogs
+        // zerstoert: Das Ergebnis kommt dann in einer neuen Instanz an.
+        if (savedInstanceState != null) {
+            String pfad = savedInstanceState.getString(STATE_ZU_SPEICHERN);
+            if (pfad != null) {
+                synchronized (speicherLock) {
+                    zuSpeichern = new File(pfad);
+                }
+            }
+        }
+
         FrameLayout wurzel = new FrameLayout(this);
         status = new TextView(this);
         status.setText("Recherche wird geladen …");
@@ -95,18 +108,23 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        synchronized (speicherLock) {
+            if (zuSpeichern != null) {
+                outState.putString(STATE_ZU_SPEICHERN, zuSpeichern.getPath());
+            }
+        }
+    }
+
+    @Override
     protected void onDestroy() {
         if (dateiAntwort != null) {
             dateiAntwort.onReceiveValue(null);
             dateiAntwort = null;
         }
-        synchronized (speicherLock) {
-            if (zuSpeichern != null) {
-                //noinspection ResultOfMethodCallIgnored
-                zuSpeichern.delete();
-                zuSpeichern = null;
-            }
-        }
+        // zuSpeichern bleibt bewusst stehen und die Datei liegen (siehe onSaveInstanceState);
+        // aufgeraeumt wird nach Alter in raeumeCacheAuf.
         if (web != null) {
             web.destroy();
         }
@@ -333,16 +351,18 @@ public class MainActivity extends Activity {
                 datei = zuSpeichern;
                 zuSpeichern = null;
             }
-            if (datei == null) {
+            Uri ziel = data == null ? null : data.getData();
+            if (resultCode != RESULT_OK) {
+                // Abbruch durch den Nutzer: Der Dialog hat kein Ziel angelegt.
+                if (datei != null) {
+                    arbeit.execute(() -> {
+                        //noinspection ResultOfMethodCallIgnored
+                        datei.delete();
+                    });
+                }
                 return;
             }
-            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
-                Uri ziel = data.getData();
-                arbeit.execute(() -> kopiereNach(datei, ziel));
-            } else {
-                //noinspection ResultOfMethodCallIgnored
-                datei.delete();
-            }
+            arbeit.execute(() -> schliesseSpeichernAb(datei, ziel));
             return;
         }
         super.onActivityResult(requestCode, resultCode, data);
@@ -460,15 +480,20 @@ public class MainActivity extends Activity {
     /** Erzeugt die Datei und oeffnet den Systemdialog "Speichern unter". Kopiert wird danach. */
     private void speichere(String funktion, String slug, File ordner, String fehlerText) {
         try {
-            File datei = erzeugeDatei(funktion, slug, ordner);
-            File alt;
+            // Nur eine ausstehende Datei: Eine zweite Anfrage wird abgelehnt, bevor sie eine Datei
+            // erzeugt (dieselbe Datei koennte sonst die erste ueberschreiben). Alle Aufrufe laufen
+            // nacheinander auf "arbeit", die Pruefung ist also nicht von einem zweiten Aufruf
+            // zu unterbrechen. Eine ausstehende Datei, die es nicht mehr gibt, blockiert nicht.
             synchronized (speicherLock) {
-                alt = zuSpeichern;
-                zuSpeichern = datei;
+                if (zuSpeichern != null && zuSpeichern.isFile()) {
+                    zeigeToast("Es wartet noch ein Speicherdialog. Bitte erst diesen beenden.");
+                    return;
+                }
+                zuSpeichern = null;
             }
-            if (alt != null && !alt.equals(datei)) {
-                //noinspection ResultOfMethodCallIgnored
-                alt.delete();
+            File datei = erzeugeDatei(funktion, slug, ordner);
+            synchronized (speicherLock) {
+                zuSpeichern = datei;
             }
             Intent wahl = new Intent(Intent.ACTION_CREATE_DOCUMENT);
             wahl.addCategory(Intent.CATEGORY_OPENABLE);
@@ -495,21 +520,75 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Ergebnis des Speicherdialogs mit OK: kopieren, oder, wenn das nicht geht, melden und aufraeumen. */
+    private void schliesseSpeichernAb(File datei, Uri ziel) {
+        if (ziel == null) {
+            Log.w(TAG, "speichern: kein Ziel im Ergebnis");
+            if (datei != null) {
+                //noinspection ResultOfMethodCallIgnored
+                datei.delete();
+            }
+            zeigeMeldung("Speichern hat nicht geklappt: Der Dialog hat kein Ziel geliefert. "
+                    + "Bitte noch einmal versuchen.");
+            return;
+        }
+        if (datei == null || !datei.isFile() || !datei.canRead()) {
+            Log.w(TAG, "speichern: ausstehende Datei fehlt");
+            loescheZiel(ziel);
+            zeigeMeldung("Speichern hat nicht geklappt: Die Datei war nicht mehr da. "
+                    + "Bitte noch einmal versuchen. Das leere Ziel wurde entfernt.");
+            return;
+        }
+        kopiereNach(datei, ziel);
+    }
+
+    /** Entfernt ein vom Systemdialog angelegtes, leeres Ziel; Fehler sind hier ohne Folgen. */
+    private void loescheZiel(Uri ziel) {
+        try {
+            DocumentsContract.deleteDocument(getContentResolver(), ziel);
+        } catch (Exception e) {
+            Log.w(TAG, "ziel nicht geloescht: " + e.getClass().getSimpleName());
+        }
+    }
+
+    private static String groesseText(long bytes) {
+        if (bytes < 1024) {
+            return bytes + " Bytes";
+        }
+        if (bytes < 1024L * 1024) {
+            return String.format(Locale.GERMAN, "%.1f KB", bytes / 1024.0);
+        }
+        return String.format(Locale.GERMAN, "%.1f MB", bytes / (1024.0 * 1024.0));
+    }
+
     private void kopiereNach(File datei, Uri ziel) {
-        try (InputStream in = new java.io.FileInputStream(datei);
-             OutputStream out = getContentResolver().openOutputStream(ziel, "wt")) {
-            if (out == null) {
-                throw new IOException("Ziel nicht schreibbar");
+        try {
+            long erwartet = datei.length();
+            long geschrieben = 0;
+            try (InputStream in = new java.io.FileInputStream(datei);
+                 OutputStream out = getContentResolver().openOutputStream(ziel, "wt")) {
+                if (out == null) {
+                    throw new IOException("Ziel nicht schreibbar");
+                }
+                byte[] puffer = new byte[64 * 1024];
+                int n;
+                while ((n = in.read(puffer)) != -1) {
+                    out.write(puffer, 0, n);
+                    geschrieben += n;
+                }
+                out.flush();
             }
-            byte[] puffer = new byte[64 * 1024];
-            int n;
-            while ((n = in.read(puffer)) > 0) {
-                out.write(puffer, 0, n);
+            // Erst nach dem Schliessen beider Streams: close() kann noch Schreibfehler melden.
+            if (geschrieben != erwartet) {
+                throw new IOException("Es wurden " + geschrieben + " von " + erwartet
+                        + " Bytes geschrieben");
             }
-            zeigeToast("Gespeichert");
+            zeigeToast("Gespeichert (" + groesseText(geschrieben) + ")");
         } catch (Exception e) {
             Log.w(TAG, "speichern fehlgeschlagen: " + e.getClass().getSimpleName());
-            zeigeMeldung("Speichern fehlgeschlagen: " + e.getMessage());
+            loescheZiel(ziel);
+            zeigeMeldung("Speichern fehlgeschlagen: " + e.getMessage()
+                    + ". Bitte noch einmal versuchen.");
         } finally {
             //noinspection ResultOfMethodCallIgnored
             datei.delete();

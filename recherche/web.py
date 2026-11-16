@@ -323,6 +323,10 @@ def loesche_fall(slug, bestaetigung):
             temp.unlink()
         else:
             shutil.rmtree(str(temp), ignore_errors=True)
+        if temp.exists():
+            # Der Fall steht in keiner Liste mehr; den Rest holt `raeume_arbeitsverzeichnisse`.
+            raise Anfragefehler(500, "Der Fall ist entfernt, aber nicht alle seine Dateien ließen sich "
+                                "löschen. Der Rest wird bei einem späteren Start der Oberfläche entfernt.")
     return slug
 
 
@@ -650,6 +654,8 @@ class Server:
     """Ein laufender Server mit eigenem Token (je Start neu)."""
 
     def __init__(self, port=0):
+        # Reste abgebrochener Vorgänge enthalten ganze Akten und stehen in keiner Liste.
+        store.raeume_arbeitsverzeichnisse(faelle_wurzel())
         self.token = secrets.token_urlsafe(24)
         self.httpd = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
         self.httpd.daemon_threads = True

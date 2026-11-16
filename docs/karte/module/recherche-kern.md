@@ -9,8 +9,8 @@ paths:
   - "tests/test_recherche_*.py"
 zweck: "Fallakte der Recherche: Speicher, Befehle, Quellenabruf mit Zitatprüfung, Statusregeln, Integritätsprüfung"
 tests: "python3 -m unittest discover -s tests -p 'test_recherche*.py'"
-stand: "9e87697966fc"
-testlauf: "gruen 9e87697966fc 2026-11-16"
+stand: "52ccf5a3e4c7"
+testlauf: "gruen 52ccf5a3e4c7 2026-11-16"
 ---
 # recherche-kern
 
@@ -29,9 +29,12 @@ testlauf: "gruen 9e87697966fc 2026-11-16"
 - Webarchive werden nur mit `--archiv` oder `--sichern` angefragt, weil die Anfrage verrät, wozu recherchiert wird (E-008).
 - Aus HTML wird der gesamte sichtbare Text übernommen, samt Navigation; eine Erkennung des Hauptinhalts gibt es nicht. Seiten, die ihren Inhalt per JavaScript laden, liefern fast nichts und lösen die Warnung unter 200 Zeichen aus.
 - `recherche/cli.py:web` startet die Weboberfläche (siehe recherche-web), die `recherche/cli.py:main` im selben Prozess aufruft. Befehle dürfen darum nur über `sys.stdin` lesen und nur argparse darf beenden. Die Seite erlaubt nur Paare aus `recherche/web.py:ERLAUBT`; ein neuer Befehl ist dort ohne Eintrag gesperrt, ein neuer Pfadparameter muss `pfad`, `datei` oder `ziel` heißen, sonst prüft `recherche/web.py:_pruefer` ihn nicht.
-- Eine geladene Akte kann Status tragen, die ihre Belege nicht tragen (das Archiv ist nur eine SQLite-Datei). `recherche/bewertung.py:lade_akte` ist darum der einzige Weg, eine Akte zu laden (CLI und Weboberfläche): Es lädt, setzt jede Behauptung mit unzulässigem Status zurück (`recherche/bewertung.py:status_unzulaessig`) und protokolliert „fall laden“. `recherche/bewertung.py:pruefe` meldet unzulässige Status als Sperre `STATUS`, falls sie anders entstehen. Wer `recherche/store.py:lade_fall` direkt aufruft, umgeht das.
+- Eine geladene Akte kann Status tragen, die ihre Belege nicht tragen (das Archiv ist nur eine SQLite-Datei). `recherche/bewertung.py:lade_akte` ist darum der einzige Weg, eine Akte zu laden (CLI und Weboberfläche). Geprüft wird, solange die Akte noch im Arbeitsverzeichnis liegt: Aufbau der Datenbank, Daten (`recherche/store.py:pruefe_inhalt`), dann werden unzulässige Status zurückgesetzt (`recherche/bewertung.py:status_unzulaessig`, hier auch bei ungeklärtem Gegenbeleg) und einmal alles ausgegeben. Erst danach wird sie ins Fallverzeichnis verschoben; jeder Fehler heißt Ablehnen. Die erste Fassung verschob zuerst und räumte bei bestimmten Fehlern auf, siehe Sackgassen. `recherche/bewertung.py:pruefe` meldet unzulässige Status als Sperre `STATUS`, falls sie anders entstehen. Wer `recherche/store.py:lade_fall` direkt aufruft, umgeht das.
 - `recherche/store.py:lade_fall` lehnt ab: mehr als 50 MiB entpackt bei mehr als dem 100-fachen der gepackten Größe, zu wenig freien Speicher (Größe plus 100 MiB Reserve) und beschädigte Archive; danach bleibt nichts im Fallverzeichnis zurück.
 - Die Datenbank einer geladenen Akte darf nur die Tabellen aus `SCHEMA` enthalten, im Wortlaut (`recherche/store.py:pruefe_schema`). Ein Auslöser oder eine Ansicht könnte Werte ändern, nachdem sie geprüft wurden, etwa einen zurückgesetzten Status wiederherstellen. Folge: Wer `SCHEMA` ändert, sperrt alle älteren Sicherungen aus, bis die Prüfung auch die alte Fassung kennt.
+- Ein Beleg zählt für die Obergrenze nur, wenn sein Zitat im gespeicherten Text steht (`recherche/bewertung.py:Kontext`, Schalter `zitate`). Nur die Nachführung nach gewöhnlichen Änderungen schaltet das ab: Sie liefe sonst bei jedem Befehl über die Texte aller Quellen, und kein Befehl kann ein Zitat ungültig machen.
+- Schlussfolgerungen, deren Prämissen im Kreis auf sie zurückführen, haben die Obergrenze unbestätigt (`Kontext.kreis`). Sonst stützen sich zwei Behauptungen ohne jeden Beleg gegenseitig.
+- `recherche/bewertung.py:_nachziehen` setzt jede Behauptung höchstens einmal zurück und bricht mit einem Fehler ab, wenn sie danach noch unzulässig ist. Zwei IDs, die sich nur in der Schreibung unterschieden (`A1`, `a1`), ließen die frühere Schleife nie enden, weil `Fall.hole` IDs großschreibt.
 - `recherche/store.py:faelle_liste` zählt nur Verzeichnisse in Slug-Form als Fälle. Die Arbeitsverzeichnisse von Laden und Löschen beginnen mit einem Punkt und enthalten zeitweise eine `fall.db`.
 - Mehrere Prozesse schreiben gleichzeitig in dieselbe Akte (SQLite im WAL-Modus). Eine ID außerhalb der Schreibtransaktion zu vergeben führt zu doppelten IDs.
 - Kein Test greift auf das Internet zu: Die Abruftests laufen gegen einen lokalen Server und setzen `RECHERCHE_LOKAL_ERLAUBT=1`.
@@ -39,10 +42,11 @@ testlauf: "gruen 9e87697966fc 2026-11-16"
 ## Tests
 - Abgedeckt: Abruf (Zeichensätze, Umleitung, Fehler, Größengrenze, interne Adressen, Dubletten), Zitatprüfung samt Auslassungen und Positionen, Tabelle der Obergrenzen einschließlich Zuschreibung, Zurücksetzen der Prüfung, jede Problemart von `pruefe`, Export, gleichzeitiges Schreiben, Sichern und Laden einer Akte, PDF-Text über `pdftotext` und über `pypdf` (`tests/test_recherche_quellen.py:PdfTest`). Laden, Archivgrenzen und fremder Aufbau der Datenbank: `tests/test_recherche_archiv.py`. Die Tests der Weboberfläche (`tests/test_recherche_web.py`) laufen unter demselben Muster mit, gehören inhaltlich zu recherche-web.
 - Von Hand geprüft am 2026-11-16: Abruf, Lesen und Belegen an drei echten Seiten (support.claude.com, platform.claude.com, anthropic.com), dazu je ein Lauf der Rollen `rechercheur` und `dokumentar` gegen die Akte.
-- Die CI (`.github/workflows/apk.yml`) lässt die Tests unter Python 3.9 und 3.13 laufen. Unter 3.13 ist `pypdf` in der Version der Android-App installiert, sonst werden die Tests dieses Wegs übersprungen; in der App gibt es nur ihn.
+- Die CI (`.github/workflows/apk.yml`) lässt die Tests unter Python 3.10, 3.13 und 3.15 laufen. Unter 3.13 ist `pypdf` in der Version der Android-App installiert, sonst werden die Tests dieses Wegs übersprungen; in der App gibt es nur ihn. Von Hand liefen sie am 2026-11-16 auch unter 3.9, 3.11, 3.12 und 3.14; 3.9 bietet der Runner nicht mehr an.
 - Lücken: kein automatischer Test gegen echte Webseiten. PDF-Text nur an einem selbst erzeugten Dokument mit eingebettetem Text; gescannte und verschlüsselte PDFs nicht.
 
 ## Sackgassen
 - 2026-11-16 · Position eines Belegs als Stelle im normalisierten Text · gescheitert daran, dass `quelle lesen --ab <stelle>` das Zitat nicht traf, weil die Leseausgabe im gespeicherten Text zählt · Beleg: Rollentest des Rechercheurs, Bericht in der Sitzung · erneut prüfen, wenn nie: ein Koordinatensystem genügt
 - 2026-11-16 · „gestützt“ schon bei zwei unabhängigen Quellen ohne Bewertung · verworfen, weil zwei unzuverlässige Quellen keinen belastbaren Stand ergeben · Beleg: `recherche/bewertung.py:obergrenze` · erneut prüfen, wenn in echten Fällen zu viel als unbestätigt hängen bleibt
+- 2026-11-16 · Geladene Akte erst ins Fallverzeichnis verschieben, dann prüfen und bei einer Liste bekannter Fehlerarten wieder entfernen · gescheitert daran, dass ein Fehler außerhalb der Liste (`Fehler`, AttributeError) eine ungeprüfte Akte mit unzulässigem Status zurückließ · Beleg: Nachreview in der Sitzung, `tests/test_recherche_archiv.py:FeindlicheAkte` · erneut prüfen, wenn nie: geprüft wird vor dem Verschieben
 - 2026-11-16 · Primärbeleg nur aus amtlichen Quellen · gescheitert daran, dass die eigene Veröffentlichung eines Urhebers nie belegen konnte, dass er etwas erklärt · Beleg: Selbsttest-Fall, Behauptung über den Hilfeartikel · gelöst durch die Kennzeichnung als Zuschreibung

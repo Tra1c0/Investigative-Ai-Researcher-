@@ -5,8 +5,8 @@ paths:
   - "tests/test_recherche_web.py"
 zweck: "Lokale Weboberfläche der Fallakte: Python-Server, eine HTML-Seite, Schnittstelle für die Android-Hülle"
 tests: "python3 -m unittest discover -s tests -p 'test_recherche_web.py'"
-testlauf: "gruen abf14a7f7258 2026-11-16"
-stand: "abf14a7f7258"
+testlauf: "gruen f5a7bf1fa981 2026-11-16"
+stand: "f5a7bf1fa981"
 ---
 # recherche-web
 
@@ -21,7 +21,8 @@ stand: "abf14a7f7258"
 - Fall, Name und Titel stehen als `--fall=`, `--wer=`, `--titel=` im Aufruf; ein Wert mit führendem `-` wäre sonst eine Option und ließe jeden Befehl scheitern. Uploads gehen als Temp-Datei mit vom Server gebildetem Namen durch `quelle datei` (eigene Prüfung der Namespace in `lade_quelle_datei`).
 - Löschen gibt es nur als `POST /api/loeschen` (`recherche/web.py:loesche_fall`: Fall und Bestätigung sind derselbe vorhandene Slug, Umbenennen im Fallverzeichnis, dann Entfernen). Es ist weder Befehl der Kommandozeile noch über `befehl` erreichbar; Agenten sollen Fallakten nicht löschen können.
 - `recherche/web.py:importiere` gibt den Text für den Nutzer zurück („Akte geladen: <slug>“, bei Rücksetzungen mit Zahl und IDs), nicht den Slug; die Android-Hülle zeigt ihn unverändert. `/api/laden` liefert `slug` und `zurueckgesetzt`.
-- Jede Verbindung hat ein Lesetimeout (`LESE_TIMEOUT`). Antwortet der Server vor dem Lesen eines Körpers, schließt `_lingern` erst die Senderichtung; ein Schließen mit ungelesenen Daten löst RST aus, das die Antwort beim Client vernichten kann. Tests zu großen Körpern erklären darum nur die Länge und senden keinen Körper.
+- Beim Start entfernt der Server liegen gebliebene Arbeitsverzeichnisse (`recherche/store.py:raeume_arbeitsverzeichnisse`), und `loesche_fall` meldet 500, wenn sich nicht alles entfernen ließ: Solche Reste enthalten eine ganze Akte und stehen in keiner Liste.
+- Jede Verbindung hat ein Lesetimeout (`LESE_TIMEOUT`). Es gilt je Lesevorgang: Ein lokaler Client, der alle paar Sekunden ein Byte schickt, hält seinen Thread weiter, und die Zahl der Threads ist nicht begrenzt. Erreichbar ist das nur für Programme auf demselben Gerät. Antwortet der Server vor dem Lesen eines Körpers, schließt `_lingern` erst die Senderichtung; ein Schließen mit ungelesenen Daten löst RST aus, das die Antwort beim Client vernichten kann. Tests zu großen Körpern erklären darum nur die Länge und senden keinen Körper.
 - IDs aus der Akte werden nur zu DOM-IDs, wenn sie die Form `^[A-Z]\d+$` haben, und `window.Android` gilt nur mit Funktion `oeffneExtern`; eine importierte Akte mit ID wie `fuss` oder `Android` überdeckt sonst Seitenelemente und die Brücke.
 - Die Seite rechnet keine Regel nach; Status, Obergrenze und Probleme kommen aus `/api/export`. Nur Bereitschaftszeile, Gruppierung und Reihenfolge der Behauptungen spiegeln `recherche/dossier.py` (zwei Stellen, bei Änderung dort anpassen).
 - Der Textleser parst die Ausgabe von `quelle lesen` (Fußzeile `-- Zeichen a bis b von n`, Trefferköpfe `[Zeichen a-b]`); ändert sich das Format in `recherche/cli.py:quelle_lesen`, bricht die Seite. Positionen zählen Unicode-Zeichen wie Python, nicht UTF-16 (`nimmZeichen`).

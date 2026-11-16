@@ -3,7 +3,7 @@ paths:
   - "android/**"
   - ".github/workflows/apk.yml"
 zweck: "Android-Hülle: eingebettetes Python (Chaquopy) plus WebView um die lokale Oberfläche von recherche; Bau und Starttest in GitHub Actions"
-stand: "1968e51bb392"
+stand: "35bb720d44e3"
 ---
 # android-huelle
 
@@ -18,7 +18,7 @@ stand: "1968e51bb392"
 - Die Python-Quellen gibt es nur in `recherche/`. Unter `android/` darf keine Kopie liegen; der Workflow bricht ab, wenn dort eine `__init__.py` auftaucht. Die Chaquopy-Tasks hängen per Namensmuster (`python`) an `syncPython`, ohne das kämen Gradle-8-Fehler über fehlende Task-Abhängigkeiten.
 - Die Seite ruft nur `window.Android.*` auf, und das ist nur sicher, weil in der WebView ausschließlich der Ursprung `http://127.0.0.1:<port>` des Servers lädt, auch für Unteranfragen (`UrlRegeln.istEigeneSeite`). Der Vergleich ist ein Präfixvergleich der Zeichenkette, nicht der Host aus `android.net.Uri`: Bei `http://fremd.example\@127.0.0.1:<port>/` liest Uri den lokalen Host, Chromium lädt aber fremd.example. `localhost` ist bewusst nicht erlaubt (könnte auf ::1 laufen). Wer eine Fremdseite in die WebView lässt, gibt ihr Import, Export und Dateizugriff.
 - Der Token steckt in der URL (`?t=`). Er darf nicht ins Log (auch nicht über die Konsole der Seite: `onConsoleMessage` loggt ohne Quelladresse) und nicht in den Browser; `UrlRegeln.externeAdresse` lässt nur Hostnamen mit Punkt zu, keine IP-Adresse in irgendeiner Schreibweise, kein localhost, keine Benutzerangabe, keinen Rückwärtsstrich, und verlangt denselben Host von `java.net.URI` und `android.net.Uri`.
-- Speichern: `speichern` und `dossierSpeichern` erzeugen die Datei im Cache, öffnen `ACTION_CREATE_DOCUMENT` und kopieren erst im Ergebnis; die Cache-Kopie wird danach gelöscht. Es gibt nur eine ausstehende Datei, `MainActivity.zuSpeichern`. Der Import bricht bei `recherche.web.MAX_LADEN` ab (gelesen aus Python) und löscht die Teilkopie.
+- Speichern: `speichern` und `dossierSpeichern` erzeugen die Datei in `cache/export`, öffnen `ACTION_CREATE_DOCUMENT` und kopieren erst im Ergebnis. Es gibt nur eine ausstehende Datei, `MainActivity.zuSpeichern`; ihr Pfad steht im Instanzzustand (`onSaveInstanceState`), damit sie eine zerstörte und neu erzeugte Activity überlebt, und `onDestroy` löscht sie nicht (nur `raeumeCacheAuf` nach Alter, das deckt `cache/export` ab). Eine zweite Anfrage bei ausstehender, noch vorhandener Datei wird mit Toast abgelehnt, bevor eine Datei entsteht. Ein Ergebnis mit OK endet nie stumm: fehlt die Datei, oder stimmt die Zahl der geschriebenen Bytes nicht mit `File.length()` überein, kommt eine Meldung („noch einmal versuchen“) und das vom Dialog angelegte Ziel wird mit `DocumentsContract.deleteDocument` entfernt; nur bei Übereinstimmung heißt es „Gespeichert“ mit Größe. Nicht auf einem Gerät geprüft. Der Import bricht bei `recherche.web.MAX_LADEN` ab (gelesen aus Python) und löscht die Teilkopie.
 - Der Server lebt pro Prozess; `MainActivity` merkt URL und Port statisch, damit eine neu erzeugte Activity keinen zweiten Server startet.
 - Log-Schlüsselwörter `python ok` und `server ok` (Tag `recherche`) liest `android/ci/starttest.sh`; ändert man sie, ändert man den Test.
 - Gebaut wird `assembleRelease`, nicht debuggable: Mit `android:debuggable` käme jeder mit adb-Zugriff per `run-as` an die Fallakten. Der Workflow-Schritt „APK prüfen“ bricht ab, wenn `aapt2 dump badging` `application-debuggable` meldet. Die Datei heißt `recherche.apk` (Artefakt `recherche-apk`, Release-Anhang).
@@ -27,7 +27,7 @@ stand: "1968e51bb392"
 - Manifest: nur INTERNET, `allowBackup=false`, leere Datenextraktion, Klartext nur für 127.0.0.1. FileProvider gibt nur `cache/export/` frei. `targetSdk` bleibt 34, ab 35 erzwingt Android Edge-to-Edge.
 - Versionen: AGP 8.13.0 (Chaquopy 17.2 unterstützt 7.3 bis 9.5), Gradle 8.13 über den Wrapper, JDK 17, compileSdk 35, Python 3.13 (muss auf dem Build-Rechner dieselbe Minor-Version haben).
 - Zwei Schalter oben im Workflow: `UI_PFLICHT` bestimmt nur die Strenge des Starttests, `VEROEFFENTLICHEN` allein, ob der Job `veroeffentlichen` die Vorabversion (Tag `apk-vorab`) anlegt; vorher enthielte sie eine App ohne Oberfläche. Sie löscht das alte Release samt Tag und legt es neu an. Ein Release aus dem allerersten Lauf (Commit 0a3b61e, noch ohne diese Bedingung, Anhang noch recherche-debug.apk) bleibt bis zum nächsten Veröffentlichungslauf stehen.
-- Der Job `veroeffentlichen` hängt an `tests`, `apk` und `starttest`. Anfangs fehlte `tests`: Ein Lauf mit rotem Test hätte bei eingeschaltetem Schalter trotzdem veröffentlicht. `tests` läuft unter Python 3.9 und 3.13; `pypdf` wird nur unter 3.13 installiert, dem Python der App.
+- Der Job `veroeffentlichen` hängt an `tests`, `apk` und `starttest`. Anfangs fehlte `tests`: Ein Lauf mit rotem Test hätte bei eingeschaltetem Schalter trotzdem veröffentlicht. `tests` läuft unter Python 3.10, 3.13 und 3.15; `pypdf` wird nur unter 3.13 installiert, dem Python der App. Das Runner-Image (Ubuntu 26.04) bietet 3.9 nicht mehr an, ein Lauf damit scheiterte schon an der Einrichtung.
 - `android/gradle/wrapper/gradle-wrapper.properties` hat keine Prüfsumme der Distribution, weil downloads.gradle.org im Entwicklungscontainer gesperrt ist; die Wrapper-JAR prüft der Workflow mit der Gradle-Wrapper-Validierung.
 
 ## Tests

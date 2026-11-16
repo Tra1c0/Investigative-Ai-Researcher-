@@ -431,20 +431,25 @@ def _schema_soll():
     return soll
 
 
+def _lies_nur(pfad, lesen):
+    """Öffnet die Datenbank unveränderlich und gibt `lesen(conn)` zurück."""
+    adresse = "file:%s?mode=ro&immutable=1" % urllib.parse.quote(str(pfad))
+    try:
+        conn = sqlite3.connect(adresse, uri=True)
+        try:
+            return lesen(conn)
+        finally:
+            conn.close()
+    except sqlite3.Error as fehler:
+        raise Fehler("Die Akte im Archiv ist keine lesbare Datenbank (%s); nichts wurde geladen." % fehler)
+
+
 def pruefe_schema(pfad):
     """Die Datenbank einer geladenen Akte darf nur die Tabellen dieses Werkzeugs enthalten, im
     Wortlaut von SCHEMA. Ein Auslöser oder eine Ansicht könnte Werte ändern, nachdem sie
     geprüft wurden, etwa einen zurückgesetzten Status wiederherstellen."""
     soll = _schema_soll()
-    adresse = "file:%s?mode=ro&immutable=1" % urllib.parse.quote(str(pfad))
-    try:
-        conn = sqlite3.connect(adresse, uri=True)
-        try:
-            zeilen = conn.execute("SELECT type, name, sql FROM sqlite_master").fetchall()
-        finally:
-            conn.close()
-    except sqlite3.Error as fehler:
-        raise Fehler("Die Akte im Archiv ist keine lesbare Datenbank (%s); nichts wurde geladen." % fehler)
+    zeilen = _lies_nur(pfad, lambda conn: conn.execute("SELECT type, name, sql FROM sqlite_master").fetchall())
     gefunden = set()
     for typ, name, sql in zeilen:
         if typ == "table" and soll.get(name) == " ".join((sql or "").split()):
@@ -461,12 +466,112 @@ def pruefe_schema(pfad):
         raise Fehler("Der Akte im Archiv fehlen Tabellen (%s); nichts wurde geladen." % ", ".join(fehlend))
 
 
-def lade_fall(wurzel, archivpfad):
+# Spalten, die auf andere Objekte verweisen. Aus IDs werden Pfade (quellen/<ID>) und Schlüssel.
+VERWEISSPALTEN = {"frage": ("hypothese",), "suche": ("frage", "hypothese"), "quelle": ("frage",),
+                  "beleg": ("quelle", "frage"), "behauptung": ("hypothese",),
+                  "beziehung": ("von", "zu"), "konfrontation": ("akteur", "antwort_quelle"),
+                  "verknuepfung": ("von", "zu")}
+_ID_STRENG = re.compile(r"([A-Z])([0-9]+)")
+
+
+def _spalten_soll():
+    """{Tabelle: [(Spalte, Typ, Pflicht)]}, von SQLite selbst aus SCHEMA gelesen."""
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.executescript(SCHEMA)
+        return {name: [(z[1], z[2].upper(), bool(z[3]) or bool(z[5]))
+                       for z in conn.execute("PRAGMA table_info(%s)" % name)]
+                for name in _schema_soll()}
+    finally:
+        conn.close()
+
+
+def _inhaltsfehler(conn, slug):
+    """Erster Verstoß der Daten gegen den Aufbau der Fallakte, sonst None."""
+    for tabelle, spalten in _spalten_soll().items():
+        bedingungen = []
+        for spalte, typ, pflicht in spalten:
+            erlaubt = ["'integer'" if typ == "INTEGER" else "'text'"] + ([] if pflicht else ["'null'"])
+            bedingungen.append("typeof(%s) IN (%s)" % (spalte, ", ".join(erlaubt)))
+        if conn.execute("SELECT 1 FROM %s WHERE NOT (%s) LIMIT 1"
+                        % (tabelle, " AND ".join(bedingungen))).fetchone():
+            return "Tabelle %s enthält Werte vom falschen Typ" % tabelle
+    hoechste = {}
+    for tabelle in sorted(set(TABELLE.values())):
+        for (wert,) in conn.execute("SELECT id FROM %s" % tabelle):
+            treffer = _ID_STRENG.fullmatch(wert)
+            if not treffer or TABELLE.get(treffer.group(1)) != tabelle:
+                return "unzulässige ID in %s: %r" % (tabelle, wert[:40])
+            hoechste[treffer.group(1)] = max(hoechste.get(treffer.group(1), 0), int(treffer.group(2)))
+    for tabelle, spalten in VERWEISSPALTEN.items():
+        for spalte in spalten:
+            for (wert,) in conn.execute("SELECT %s FROM %s WHERE %s IS NOT NULL AND %s != ''"
+                                        % (spalte, tabelle, spalte, spalte)):
+                treffer = _ID_STRENG.fullmatch(wert)
+                if not treffer or treffer.group(1) not in TABELLE:
+                    return "unzulässiger Verweis in %s.%s: %r" % (tabelle, spalte, wert[:40])
+    zaehler = dict(conn.execute("SELECT praefix, n FROM zaehler").fetchall())
+    for praefix, nummer in hoechste.items():
+        if zaehler.get(praefix, 0) < nummer:
+            return "Zähler für %s steht unter der höchsten vergebenen ID" % praefix
+    try:
+        for tabelle, spalten, form in (("hypothese", ("prueft", "widerlegt"), list), ("akteur", ("kennungen",), dict)):
+            for zeile in conn.execute("SELECT %s FROM %s" % (", ".join(spalten), tabelle)):
+                for text in zeile:
+                    wert = json.loads(text) if text else form()
+                    teile = list(wert.items()) if isinstance(wert, dict) else [(None, x) for x in wert]
+                    if not isinstance(wert, form) or not all(
+                            isinstance(v, str) and (k is None or isinstance(k, str)) for k, v in teile):
+                        return "unzulässige Liste oder Zuordnung in %s" % tabelle
+    except (ValueError, TypeError, AttributeError):
+        return "unlesbare Liste oder Zuordnung in hypothese oder akteur"
+    meta = dict(conn.execute("SELECT schluessel, wert FROM meta").fetchall())
+    if meta.get("slug") != slug:
+        return "der Kurzname in der Akte passt nicht zum Archiv"
+    return None
+
+
+def pruefe_inhalt(pfad, slug):
+    """Die Daten einer geladenen Akte müssen so aussehen, wie das Werkzeug sie schreibt:
+    Typen der Spalten, IDs und Verweise in der Form `A1`, Zähler, Listen. Das Archiv ist eine
+    fremde Datei; aus IDs werden Pfade und Schlüssel, und zwei IDs, die sich nur in der
+    Schreibung unterscheiden, haben das Zurücksetzen schon einmal in eine Endlosschleife geführt."""
+    fehler = _lies_nur(pfad, lambda conn: _inhaltsfehler(conn, slug))
+    if fehler:
+        raise Fehler("Die Akte im Archiv verletzt den Aufbau der Fallakte (%s); nichts wurde geladen." % fehler)
+
+
+ARBEITSVERZEICHNISSE = (".laden-", ".upload-", ".loeschen-")
+
+
+def raeume_arbeitsverzeichnisse(wurzel, aelter_als=3600):
+    """Entfernt liegen gebliebene Arbeitsverzeichnisse von Laden, Hochladen und Löschen. Nach
+    einem Abbruch des Prozesses enthalten sie eine ganze Akte, erscheinen aber in keiner Liste.
+    Nur ältere, damit ein gleichzeitig laufender Vorgang seines behält."""
+    wurzel = Path(wurzel)
+    if not wurzel.is_dir():
+        return
+    grenze = datetime.now(timezone.utc).timestamp() - aelter_als
+    for pfad in wurzel.iterdir():
+        try:
+            if pfad.name.startswith(ARBEITSVERZEICHNISSE) and pfad.lstat().st_mtime < grenze:
+                if pfad.is_dir() and not pfad.is_symlink():
+                    shutil.rmtree(str(pfad), ignore_errors=True)
+                else:
+                    pfad.unlink()
+        except OSError:
+            pass
+
+
+def lade_fall(wurzel, archivpfad, pruefung=None):
     """Stellt einen mit sichere_fall gesicherten Fall wieder her; gibt den Slug zurück.
 
-    Ruft niemand außer `bewertung.lade_akte` auf: Eine geladene Akte muss danach geprüft
-    werden. Bei jedem Fehler bleibt nichts im Fallverzeichnis zurück."""
+    Ruft niemand außer `bewertung.lade_akte` auf: Eine geladene Akte muss geprüft werden.
+    `pruefung(verzeichnis, slug)` läuft, solange die Akte noch im Arbeitsverzeichnis liegt;
+    erst danach wird sie ins Fallverzeichnis verschoben. Scheitert irgendetwas, bleibt dort
+    nichts zurück."""
     wurzel = Path(wurzel)
+    raeume_arbeitsverzeichnisse(wurzel)
     try:
         archiv = zipfile.ZipFile(str(archivpfad))
     except (OSError, zipfile.BadZipFile) as fehler:
@@ -502,6 +607,16 @@ def lade_fall(wurzel, archivpfad):
                     raise Fehler("Der Speicher ist beim Entpacken voll gelaufen; nichts wurde geladen.")
                 raise Fehler("Archiv beschädigt oder unvollständig (%s); nichts wurde geladen." % fehler)
             pruefe_schema(temp / slug / "fall.db")
+            pruefe_inhalt(temp / slug / "fall.db", slug)
+            if pruefung is not None:
+                try:
+                    pruefung(temp, slug)
+                except Fehler as fehler:
+                    raise Fehler("Die Akte im Archiv ist in sich nicht stimmig (%s); nichts wurde geladen."
+                                 % fehler)
+                except Exception as fehler:  # bewusst breit: fremde Daten, jeder Fehler heißt Ablehnen
+                    raise Fehler("Die Akte im Archiv ist beschädigt oder unvollständig (%s: %s); "
+                                 "nichts wurde geladen." % (type(fehler).__name__, fehler))
             try:
                 (temp / slug).rename(wurzel / slug)
             except OSError as fehler:
