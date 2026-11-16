@@ -2,6 +2,13 @@
 
 Modulübergreifende Entscheidungen und Sackgassen, neueste oben. Format siehe `.claude/rules/karte-format.md`.
 
+## E-010 · 2026-11-16 · Eine geladene Akte ist fremde Eingabe: lesen, neu schreiben, vor dem Ablegen prüfen
+
+Kontext: Akten wandern als Zip zwischen Sitzung, Rechner und Telefon (E-009). Drei Reviews fanden nacheinander Wege, auf denen ein präpariertes Archiv die Regeln aus E-007 unterlief oder die Oberfläche lahmlegte: ein Status über der Obergrenze, Auslöser in der Datenbank, eine Endlosschleife bei IDs in zwei Schreibungen, eine ungeprüfte Akte als Rest nach einem Fehler, zwei Zeilen derselben ID hinter einem veralteten Index, Verknüpfungen mit Objekten, die es noch nicht gibt, Ladezeiten von Minuten. Jede einzelne Prüfung der fremden Datei ließ den nächsten Winkel offen.
+Entscheidung: Die Datenbank aus dem Archiv wird nur gelesen. Ihre Zeilen kommen in eine frische Datenbank mit dem eigenen Schema und werden dort geprüft (Typen, IDs, Verweise auf vorhandene Objekte, bekannte Werte). Dann fällt jeder Status zurück, den `behauptung pruefen` für dieselben Daten ablehnen würde, und die Akte wird einmal vollständig ausgegeben. Erst danach kommt sie ins Fallverzeichnis; jeder Fehler heißt Ablehnen. Der einzige Weg dorthin ist `recherche/bewertung.py:lade_akte`. Nicht prüfbar bleibt, ob die Schnappschüsse einer fremden Akte echt sind: „belegt“ heißt dort, dass das Zitat im mitgelieferten Text steht.
+Verworfen: Die fremde Datei nach bestandener Prüfung übernehmen (Sackgassen in recherche-kern). Akten signieren, weil das einen Schlüssel je Nutzer voraussetzt, den es nicht gibt.
+Erneut prüfen, wenn: Akten zwischen mehreren Personen ausgetauscht werden. Dann braucht es eine Aussage über die Herkunft, etwa eine Signatur.
+
 ## E-009 · 2026-11-16 · Die Android-App ist die Fallakte mit Oberfläche, ohne Agenten
 
 Kontext: Die App soll als APK laufen. Ein eigenes Programm kann das Claude-Abo nicht nutzen: Anthropic erlaubt Drittentwicklern nicht, den Login von claude.ai oder dessen Kontingente für eigene Produkte anzubieten, und verweist auf API-Schlüssel ([Doku](https://code.claude.com/docs/en/agent-sdk/overview), abgerufen 2026-11-16). Agenten in der APK würden jede Recherche über die API zusätzlich kosten. Die Prüfregeln stecken im Python-Paket; eine zweite Fassung in Kotlin oder JavaScript müsste dauerhaft gleich gehalten werden.

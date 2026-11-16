@@ -12,7 +12,7 @@ Stand 2026-11-16: Kern (Fallakte, Belegprüfung, Dossier), Methode, Rollen, Ober
 - Die Methode steht im Skill `/recherche <Thema>` (`.claude/skills/recherche/SKILL.md`). Die Rollen sind Subagenten: `rechercheur` (Sonnet) sammelt, `dokumentar` (Opus) prüft unabhängig, `advocatus` (Opus) sucht dagegen, `justiziar` (Opus) macht die rechtliche Vorprüfung.
 - Fallakten liegen unter `faelle/` und kommen nicht ins Git. Das Repository ist öffentlich, und eine Akte kann Namen und Vorwürfe enthalten.
 - Tests: `python3 -m unittest discover -s tests`. Kein Test greift auf das Internet zu.
-- Warum die App so gebaut ist, steht in `docs/karte/ENTSCHEIDUNGEN.md` (E-006 bis E-009). Die Regeln dort zu Belegen und zum Schutz von Privatpersonen sind keine Stilfragen: Wer sie lockert, macht aus dem Werkzeug ein anderes.
+- Warum die App so gebaut ist, steht in `docs/karte/ENTSCHEIDUNGEN.md` (E-006 bis E-010). Die Regeln dort zu Belegen und zum Schutz von Privatpersonen sind keine Stilfragen: Wer sie lockert, macht aus dem Werkzeug ein anderes.
 
 ## Projektkarte
 

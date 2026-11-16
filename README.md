@@ -67,7 +67,7 @@ Die App speichert Akten nur im eigenen Speicherbereich, schließt sie von der Cl
 ## Was die App nicht kann
 
 - Mit Menschen sprechen, Informanten gewinnen, vor Ort recherchieren, Akten einsehen, Auskunftsansprüche durchsetzen. Sie bereitet das vor und legt es als Aufgaben für Menschen an.
-- Die Echtheit von Dokumenten, Fotos und Videos prüfen.
+- Die Echtheit von Dokumenten, Fotos und Videos prüfen. Das gilt auch für geladene Akten: Die App prüft ihren Aufbau und setzt jeden Status zurück, den die Belege nicht tragen, aber nicht, ob die Schnappschüsse darin wirklich von der genannten Adresse stammen. Eine Akte aus fremder Hand ist so vertrauenswürdig wie ihr Absender.
 - Seiten lesen, die ihren Inhalt erst per JavaScript laden oder hinter einer Bezahlschranke liegen.
 - Rechtlich prüfen. Die Vorprüfung macht sichtbar, wo es heikel wird; vor einer Veröffentlichung braucht es einen Anwalt.
 - Handelsregister, Bundesanzeiger und ähnliche Quellen automatisch abfragen, wo das nicht erlaubt ist.
