@@ -2,6 +2,27 @@
 
 Modulübergreifende Entscheidungen und Sackgassen, neueste oben. Format siehe `.claude/rules/karte-format.md`.
 
+## E-008 · 2026-11-16 · Recherchiert werden öffentliche Rollen; Privatpersonen sind geschützt
+
+Kontext: Der Pressekodex verlangt die Abwägung zwischen Informationsinteresse und Persönlichkeitsschutz (Ziffer 8) und die Unschuldsvermutung (Ziffer 13). Bellingcat hält in seinen Standards fest, dass Recherchierende nicht über das Nötige hinausgehen und Privates nur bei gerechtfertigtem öffentlichem Interesse veröffentlichen; ein Fall, in dem ein Unbeteiligter nach Fehlern von Online-Rechercheuren öffentlich bloßgestellt wurde, ist dokumentiert. Das Handelsregister hat keine Schnittstelle und beschränkt den automatisierten Abruf (§ 52 HRV), archive.today lässt keine Automatisierung zu. Alles nur über Suchtreffer geprüft, die Primärquellen waren aus der Sitzung nicht erreichbar.
+Entscheidung: Skill und Rollen grenzen die Recherche auf öffentliche Rollen und offen zugängliche Quellen ein. `pruefe` meldet Behauptungen über Privatpersonen, Personen ohne eindeutiges Merkmal und fehlende Stellungnahmen als offen vor einer Veröffentlichung. Webarchive werden nur auf ausdrücklichen Wunsch angefragt, weil die Anfrage verrät, wozu recherchiert wird. Angebunden werden nur Quellen, die maschinellen Zugriff erlauben.
+Verworfen: Automatischer Abruf von Handelsregister, Bundesanzeiger und Insolvenzbekanntmachungen. Dafür legt die Recherche Aufgaben für Menschen an.
+Erneut prüfen, wenn: eine dieser Quellen eine offizielle Schnittstelle bekommt.
+
+## E-007 · 2026-11-16 · Ein Beleg ist ein wörtliches Zitat aus dem gespeicherten Schnappschuss
+
+Kontext: Untersuchungen zu KI-Recherchewerkzeugen berichten hohe Fehlerquoten bei Quellenangaben: über 60 % falsche Zuordnungen bei KI-Suchmaschinen (Tow Center, 2025), 45 % der Antworten mit erheblichem Mangel und 31 % mit Quellenproblemen (EBU und BBC, 2025), 40 bis 80 % Zitiergenauigkeit bei Deep-Research-Systemen (DeepTRACE). Alle Zahlen stammen aus Suchtreffern, nicht aus den Studien selbst.
+Entscheidung: `recherche` nimmt einen Beleg nur an, wenn das Zitat im lokal gespeicherten Text der Quelle steht. Der Status einer Behauptung hat eine Obergrenze, die sich aus Zahl, Unabhängigkeit und Art der Quellen ergibt; Quellen mit gemeinsamem Ursprung zählen als eine. Den Status setzt eine Rolle, die die Überlegungen der Sammlung nicht kennt, und jede spätere Änderung an Behauptung oder Belegen setzt ihn zurück. Das Dossier entsteht aus der Akte, nicht aus freiem Text.
+Verworfen: Ein frei geschriebener Bericht mit nachträglichen Quellenangaben. Zusammenfassungen anderer Werkzeuge als Quelle, weil sie den Wortlaut nicht garantieren.
+Erneut prüfen, wenn: die Zitatprüfung echte Zitate häufig ablehnt, etwa wegen Zeilenumbrüchen in PDFs. Dann die Normalisierung erweitern, nicht die Prüfung lockern.
+
+## E-006 · 2026-11-16 · Die App ist eine Fallakte mit Prüfregeln plus Rollen in Claude Code
+
+Kontext: Ein Max-Abo deckt Claude Code ab, auch im nichtinteraktiven Betrieb, aber keine API-Nutzung. Auf Anthropics Recherche-Benchmark kostete Fable 5.2 das 4,3-Fache von Sonnet 5.5 ohne messbaren Gewinn; Opus 5.5 lag 2,4 Punkte über Sonnet 5.5 bei 1,5-fachen Kosten ([Doku](https://platform.claude.com/docs/en/about-claude/models/optimizing-for-cost-and-intelligence), abgerufen 2026-11-16). Die Sammlung ist Masse im Sinn von E-005: viele unabhängige Fragen und mehr Lesestoff, als in einen Kontext passt.
+Entscheidung: Laufzeit ist Claude Code mit dem Abo. Der Zustand liegt in `faelle/<fall>/fall.db` und wird nur über `python3 -m recherche` verändert. Die Methode steht im Skill `/recherche`, die Rollen sind Subagenten: `rechercheur` auf Sonnet, `dokumentar`, `advocatus` und `justiziar` auf Opus. Die Leitung liegt beim Modell der Sitzung; Fable bringt für die Sammlung keinen gemessenen Vorteil.
+Verworfen: Eine eigenständige Web-App mit API-Schlüssel, solange die Methode nicht an echten Fällen geprüft ist; sie würde jede Recherche zusätzlich kosten.
+Erneut prüfen, wenn: die App ohne Claude Code oder für andere laufen soll. Die Fallakte bleibt dann dieselbe, nur der Antrieb wechselt.
+
 ## E-005 · 2026-11-16 · Delegiert wird Masse, Zusammenhängendes bleibt in einer Hand
 
 Kontext: Anthropics Messungen zu Kosten und Qualität ([Doku](https://platform.claude.com/docs/en/about-claude/models/optimizing-for-cost-and-intelligence), abgerufen 2026-11-16, erste Hälfte der Seite gelesen). Delegation an günstigere Modelle lag nur in zwei Fällen vorn: bei Arbeit, die größer ist als ein Kontextfenster, und bei Routinearbeit mit teuren Ausreißern. Bei einer zusammenhängenden Kette, die in einen Kontext passt, war das Modell des Orchestrators allein mit niedrigerem Effort in jedem gemessenen Fall besser; diese Fälle wurden an Vorgängermodellen gemessen. Auf dem Defektsuche-Benchmark kostete Fable 5.2 als Orchestrator anstelle von Opus 5.5 19 % mehr bei etwa gleichem Ergebnis; allein arbeitend lag Fable 5.2 dort 3,2 bis 7,5 Punkte über dem Gespann mit Sonnet-Subagenten, bei 2,2- bis 3,4-fachen Kosten. Haiku-Subagenten senkten bei Coding die Kosten pro Versuch um 32 % und die Erfolgsquote um etwa 4 Punkte. Mit niedrigem Effort beginnen und nur Fehlschläge höher wiederholen kostete rund 40 % weniger als alles auf `high`, bei gleicher Erfolgsquote, sofern Tests die Fehlschläge sichtbar machen.

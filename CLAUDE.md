@@ -1,6 +1,16 @@
 # Investigative-Ai-Researcher
 
-Stand 2026-11-16: Das Repository enthält bisher nur die Arbeitsumgebung für Claude (Agenten, Projektkarte, Prüfwerkzeug). Sobald das eigentliche Projekt Build- und Testbefehle hat, gehören sie hierher.
+Eine App für investigative Recherche: Sie führt eine Fallakte, in der jede Aussage an ein wörtliches Zitat aus einer gesicherten Quelle gebunden ist, und arbeitet mit Rollen wie ein Rechercheteam.
+
+Stand 2026-11-16: Kern (Fallakte, Belegprüfung, Dossier), Methode und Rollen stehen. Es fehlen Anbindungen an Register und Datenbanken und eine eigene Oberfläche.
+
+## Die App
+
+- `recherche/` ist ein Python-Paket ohne Abhängigkeiten außer der Standardbibliothek. Alle Befehle: `python3 -m recherche --help`.
+- Die Methode steht im Skill `/recherche <Thema>` (`.claude/skills/recherche/SKILL.md`). Die Rollen sind Subagenten: `rechercheur` (Sonnet) sammelt, `dokumentar` (Opus) prüft unabhängig, `advocatus` (Opus) sucht dagegen, `justiziar` (Opus) macht die rechtliche Vorprüfung.
+- Fallakten liegen unter `faelle/` und kommen nicht ins Git. Das Repository ist öffentlich, und eine Akte kann Namen und Vorwürfe enthalten.
+- Tests: `python3 -m unittest discover -s tests`. Kein Test greift auf das Internet zu.
+- Warum die App so gebaut ist, steht in `docs/karte/ENTSCHEIDUNGEN.md` (E-006 bis E-008). Die Regeln dort zu Belegen und zum Schutz von Privatpersonen sind keine Stilfragen: Wer sie lockert, macht aus dem Werkzeug ein anderes.
 
 ## Projektkarte
 
