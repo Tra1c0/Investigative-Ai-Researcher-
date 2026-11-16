@@ -410,7 +410,7 @@ def _archiv_slug(namen):
 MAX_ARCHIV_DATEIEN = 50000
 MAX_ARCHIV_BYTES = 4 * 1024 ** 3
 # Ein kleines Archiv darf nicht ein großes Vielfaches an Speicher belegen (Zip-Bombe).
-MAX_OHNE_VERHAELTNIS = 50 * 1024 ** 2
+MAX_OHNE_VERHAELTNIS = 16 * 1024 ** 2
 MAX_VERHAELTNIS = 100
 SPEICHER_RESERVE = 100 * 1024 ** 2
 
@@ -466,11 +466,22 @@ def pruefe_schema(pfad):
         raise Fehler("Der Akte im Archiv fehlen Tabellen (%s); nichts wurde geladen." % ", ".join(fehlend))
 
 
-# Spalten, die auf andere Objekte verweisen. Aus IDs werden Pfade (quellen/<ID>) und Schlüssel.
-VERWEISSPALTEN = {"frage": ("hypothese",), "suche": ("frage", "hypothese"), "quelle": ("frage",),
-                  "beleg": ("quelle", "frage"), "behauptung": ("hypothese",),
-                  "beziehung": ("von", "zu"), "konfrontation": ("akteur", "antwort_quelle"),
-                  "verknuepfung": ("von", "zu")}
+# Spalten, die auf andere Objekte verweisen, mit den Buchstaben der erlaubten Ziele. Aus IDs
+# werden Pfade (quellen/<ID>) und Schlüssel.
+VERWEISSPALTEN = {("frage", "hypothese"): "H", ("suche", "frage"): "F", ("suche", "hypothese"): "H",
+                  ("quelle", "frage"): "F", ("beleg", "quelle"): "Q", ("beleg", "frage"): "F",
+                  ("behauptung", "hypothese"): "H", ("beziehung", "von"): "PO", ("beziehung", "zu"): "PO",
+                  ("konfrontation", "akteur"): "PO", ("konfrontation", "antwort_quelle"): "Q"}
+# Arten von Verknüpfungen: (Buchstaben für von, Buchstaben für zu)
+VERKNUEPFUNGSARTEN = {"pro": ("A", "B"), "contra": ("A", "B"), "aus": ("A", "A"), "betrifft": ("A", "PO"),
+                      "akteur_beleg": ("PO", "B"), "beziehung_beleg": ("R", "B"),
+                      "ereignis_beleg": ("E", "B"), "ereignis_akteur": ("E", "PO"),
+                      "konfrontation_zu": ("K", "A")}
+AUFZAEHLUNGEN = {("hypothese", "status"): HYPOTHESEN_STATUS, ("frage", "status"): FRAGEN_STATUS,
+                 ("suche", "richtung"): RICHTUNGEN, ("quelle", "typ"): QUELLEN_TYPEN,
+                 ("quelle", "zuverlaessigkeit"): ZUVERLAESSIGKEIT + ("",),
+                 ("behauptung", "art"): BEHAUPTUNGS_ARTEN, ("akteur", "art"): ("person", "organisation"),
+                 ("akteur", "kategorie"): KATEGORIEN, ("konfrontation", "status"): KONFRONTATIONS_STATUS}
 _ID_STRENG = re.compile(r"([A-Z])([0-9]+)")
 
 
@@ -486,6 +497,39 @@ def _spalten_soll():
         conn.close()
 
 
+def _uebernimm(fremd_pfad, ziel_pfad):
+    """Schreibt die Zeilen der fremden Datenbank in eine frische mit dem eigenen SCHEMA.
+
+    Die Datei aus dem Archiv wird gelesen, nie benutzt: Ihr Dateiformat hat mehr Winkel, als
+    sich prüfen lassen. Zwei Zeilen mit derselben ID hinter einem Index, der nur eine kennt,
+    kamen so schon durch; hier scheitern sie am Primärschlüssel der neuen Tabelle."""
+    adresse = "file:%s?mode=ro&immutable=1" % urllib.parse.quote(str(fremd_pfad))
+    try:
+        ziel = sqlite3.connect(str(ziel_pfad), isolation_level=None)
+        try:
+            ziel.executescript(SCHEMA)
+            fremd = sqlite3.connect(adresse, uri=True)
+            try:
+                befund = fremd.execute("PRAGMA integrity_check").fetchall()
+                if befund != [("ok",)]:
+                    raise Fehler("Die Datenbank der Akte im Archiv ist beschädigt (%s); nichts wurde geladen."
+                                 % str(befund[0][0])[:120])
+                ziel.execute("BEGIN")
+                for tabelle, spalten in _spalten_soll().items():
+                    namen = ", ".join(spalte for spalte, _typ, _pflicht in spalten)
+                    einfuegen = "INSERT INTO %s (%s) VALUES (%s)" % (tabelle, namen, ", ".join("?" for _ in spalten))
+                    # NOT INDEXED: jede Zeile der Tabelle selbst, nicht das, was ein Index von ihr weiß
+                    for zeile in fremd.execute("SELECT %s FROM %s NOT INDEXED ORDER BY rowid" % (namen, tabelle)):
+                        ziel.execute(einfuegen, tuple(zeile))
+                ziel.execute("COMMIT")
+            finally:
+                fremd.close()
+        finally:
+            ziel.close()
+    except sqlite3.Error as fehler:
+        raise Fehler("Die Akte im Archiv ist keine gültige Fallakte (%s); nichts wurde geladen." % fehler)
+
+
 def _inhaltsfehler(conn, slug):
     """Erster Verstoß der Daten gegen den Aufbau der Fallakte, sonst None."""
     for tabelle, spalten in _spalten_soll().items():
@@ -496,20 +540,34 @@ def _inhaltsfehler(conn, slug):
         if conn.execute("SELECT 1 FROM %s WHERE NOT (%s) LIMIT 1"
                         % (tabelle, " AND ".join(bedingungen))).fetchone():
             return "Tabelle %s enthält Werte vom falschen Typ" % tabelle
-    hoechste = {}
+    vorhanden, hoechste = set(), {}
     for tabelle in sorted(set(TABELLE.values())):
         for (wert,) in conn.execute("SELECT id FROM %s" % tabelle):
             treffer = _ID_STRENG.fullmatch(wert)
             if not treffer or TABELLE.get(treffer.group(1)) != tabelle:
                 return "unzulässige ID in %s: %r" % (tabelle, wert[:40])
+            vorhanden.add(wert)
             hoechste[treffer.group(1)] = max(hoechste.get(treffer.group(1), 0), int(treffer.group(2)))
-    for tabelle, spalten in VERWEISSPALTEN.items():
-        for spalte in spalten:
-            for (wert,) in conn.execute("SELECT %s FROM %s WHERE %s IS NOT NULL AND %s != ''"
-                                        % (spalte, tabelle, spalte, spalte)):
-                treffer = _ID_STRENG.fullmatch(wert)
-                if not treffer or treffer.group(1) not in TABELLE:
-                    return "unzulässiger Verweis in %s.%s: %r" % (tabelle, spalte, wert[:40])
+
+    def ziel_ok(wert, buchstaben):
+        # Ein Verweis auf ein Objekt, das es noch nicht gibt, hinge sich an das nächste, das entsteht.
+        return wert[:1] in buchstaben and wert in vorhanden
+
+    for (tabelle, spalte), buchstaben in VERWEISSPALTEN.items():
+        for (wert,) in conn.execute("SELECT %s FROM %s WHERE %s IS NOT NULL AND %s != ''"
+                                    % (spalte, tabelle, spalte, spalte)):
+            if not ziel_ok(wert, buchstaben):
+                return "Verweis ohne Ziel in %s.%s: %r" % (tabelle, spalte, wert[:40])
+    for art, von, zu in conn.execute("SELECT art, von, zu FROM verknuepfung"):
+        if art not in VERKNUEPFUNGSARTEN:
+            return "unbekannte Art von Verknüpfung: %r" % art[:40]
+        if not ziel_ok(von, VERKNUEPFUNGSARTEN[art][0]) or not ziel_ok(zu, VERKNUEPFUNGSARTEN[art][1]):
+            return "Verknüpfung ohne Ziel (%s): %r → %r" % (art, von[:40], zu[:40])
+    for (tabelle, spalte), werte in AUFZAEHLUNGEN.items():
+        platz = ", ".join("?" for _ in werte)
+        if conn.execute("SELECT 1 FROM %s WHERE %s NOT IN (%s) LIMIT 1" % (tabelle, spalte, platz),
+                        tuple(werte)).fetchone():
+            return "unbekannter Wert in %s.%s" % (tabelle, spalte)
     zaehler = dict(conn.execute("SELECT praefix, n FROM zaehler").fetchall())
     for praefix, nummer in hoechste.items():
         if zaehler.get(praefix, 0) < nummer:
@@ -517,8 +575,8 @@ def _inhaltsfehler(conn, slug):
     try:
         for tabelle, spalten, form in (("hypothese", ("prueft", "widerlegt"), list), ("akteur", ("kennungen",), dict)):
             for zeile in conn.execute("SELECT %s FROM %s" % (", ".join(spalten), tabelle)):
-                for text in zeile:
-                    wert = json.loads(text) if text else form()
+                for inhalt in zeile:
+                    wert = json.loads(inhalt) if inhalt else form()
                     teile = list(wert.items()) if isinstance(wert, dict) else [(None, x) for x in wert]
                     if not isinstance(wert, form) or not all(
                             isinstance(v, str) and (k is None or isinstance(k, str)) for k, v in teile):
@@ -544,10 +602,10 @@ def pruefe_inhalt(pfad, slug):
 ARBEITSVERZEICHNISSE = (".laden-", ".upload-", ".loeschen-")
 
 
-def raeume_arbeitsverzeichnisse(wurzel, aelter_als=3600):
+def raeume_arbeitsverzeichnisse(wurzel, aelter_als=86400):
     """Entfernt liegen gebliebene Arbeitsverzeichnisse von Laden, Hochladen und Löschen. Nach
     einem Abbruch des Prozesses enthalten sie eine ganze Akte, erscheinen aber in keiner Liste.
-    Nur ältere, damit ein gleichzeitig laufender Vorgang seines behält."""
+    Nur die von gestern, damit ein gleichzeitig laufender Vorgang seines sicher behält."""
     wurzel = Path(wurzel)
     if not wurzel.is_dir():
         return
@@ -606,7 +664,11 @@ def lade_fall(wurzel, archivpfad, pruefung=None):
                 if isinstance(fehler, OSError) and fehler.errno == errno.ENOSPC:
                     raise Fehler("Der Speicher ist beim Entpacken voll gelaufen; nichts wurde geladen.")
                 raise Fehler("Archiv beschädigt oder unvollständig (%s); nichts wurde geladen." % fehler)
-            pruefe_schema(temp / slug / "fall.db")
+            fremd = temp / "fremd.db"
+            (temp / slug / "fall.db").rename(fremd)
+            pruefe_schema(fremd)
+            _uebernimm(fremd, temp / slug / "fall.db")
+            fremd.unlink()
             pruefe_inhalt(temp / slug / "fall.db", slug)
             if pruefung is not None:
                 try:

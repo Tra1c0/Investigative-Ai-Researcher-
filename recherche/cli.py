@@ -628,7 +628,8 @@ def _behauptung_aenderungen(fall, a, args):
     if args.klaerung is not None:
         werte["klaerung"] = args.klaerung.strip()
     werte = {s: w for s, w in werte.items() if w != a[s]}
-    zuruecksetzen = bool(set(werte) & {"text", "art", "zuschreibung"})
+    # Auch die Klärung: Auf ihr beruht, dass ein Status trotz Gegenbeleg stehen darf.
+    zuruecksetzen = bool(set(werte) & {"text", "art", "zuschreibung", "klaerung"})
     aus_alt = fall.verknuepfungen("aus").get(a["id"], [])
     aus_neu = fall.hole_liste(args.aus, "A") if args.aus is not None else aus_alt
     if a["id"] in aus_neu:

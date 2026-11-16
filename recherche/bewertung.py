@@ -1,5 +1,7 @@
 """Bewertung: Statusregeln für Behauptungen, Unabhängigkeit der Quellen, Integritätsprüfung, Export."""
 
+import collections
+
 from . import quellen as q
 from .store import (BEHAUPTUNGS_STATUS, Fall, Fehler, PRUEFBARE_STATUS, jetzt, lade_fall,
                     zu_dict, zu_liste)
@@ -112,6 +114,51 @@ def obergrenze(art, zuschreibung, pro, quellen_nach_id, gruppen, aus_stati):
 # Daten eines Falls für Prüfung, Statusregeln und Export
 # ===========================================================================
 
+def _knoten_im_kreis(kanten):
+    """Knoten eines gerichteten Graphen {von: [zu]}, die auf einem Kreis liegen.
+
+    Starke Zusammenhangskomponenten nach Tarjan, ohne Rekursion und in linearer Zeit: Die erste
+    Fassung suchte je Behauptung alle Wege ab und brauchte für eine Kette von 4000
+    Schlussfolgerungen anderthalb Minuten."""
+    index, tief, stapel, auf_stapel, ergebnis = {}, {}, [], set(), set()
+    for start in list(kanten):
+        if start in index:
+            continue
+        index[start] = tief[start] = len(index)
+        stapel.append(start)
+        auf_stapel.add(start)
+        arbeit = [(start, iter(kanten.get(start, ())))]
+        while arbeit:
+            knoten, nachfolger = arbeit[-1]
+            abgestiegen = False
+            for n in nachfolger:
+                if n not in index:
+                    index[n] = tief[n] = len(index)
+                    stapel.append(n)
+                    auf_stapel.add(n)
+                    arbeit.append((n, iter(kanten.get(n, ()))))
+                    abgestiegen = True
+                    break
+                if n in auf_stapel:
+                    tief[knoten] = min(tief[knoten], index[n])
+            if abgestiegen:
+                continue
+            arbeit.pop()
+            if arbeit:
+                tief[arbeit[-1][0]] = min(tief[arbeit[-1][0]], tief[knoten])
+            if tief[knoten] == index[knoten]:
+                komponente = []
+                while True:
+                    k = stapel.pop()
+                    auf_stapel.discard(k)
+                    komponente.append(k)
+                    if k == knoten:
+                        break
+                if len(komponente) > 1 or knoten in kanten.get(knoten, ()):
+                    ergebnis.update(komponente)
+    return ergebnis
+
+
 class Kontext:
     """Momentaufnahme aller Objekte eines Falls (einmal gelesen, vielfach genutzt).
 
@@ -132,29 +179,22 @@ class Kontext:
         self.aus = fall.verknuepfungen("aus")
         self.betrifft = fall.verknuepfungen("betrifft")
         self._normtexte = {}
+        self._kreis = None
 
     def belege_von(self, liste):
         return [self.belege[i] for i in liste]
 
-    def kreis(self, aid):
-        """Der Weg, auf dem eine Behauptung über ihre Prämissen wieder bei sich ankommt, sonst None."""
-        offen, gesehen = [(i, [aid, i]) for i in self.aus.get(aid, [])], set()
-        while offen:
-            knoten, weg = offen.pop()
-            if knoten == aid:
-                return weg
-            if knoten not in gesehen:
-                gesehen.add(knoten)
-                offen.extend((i, weg + [i]) for i in self.aus.get(knoten, []))
-        return None
+    def im_kreis(self):
+        """Behauptungen, die über ihre Prämissen wieder bei sich ankommen (einmal je Kontext)."""
+        if self._kreis is None:
+            self._kreis = _knoten_im_kreis(self.aus)
+        return self._kreis
 
     def obergrenze(self, behauptung):
         aid = behauptung["id"]
-        if behauptung["art"] == "schlussfolgerung":
-            kreis = self.kreis(aid)
-            if kreis:
-                # Zwei Schlussfolgerungen, die sich gegenseitig stützen, stützen sich auf nichts.
-                return "unbestaetigt", "Prämissen hängen im Kreis voneinander ab: " + " → ".join(kreis)
+        if behauptung["art"] == "schlussfolgerung" and aid in self.im_kreis():
+            # Zwei Schlussfolgerungen, die sich gegenseitig stützen, stützen sich auf nichts.
+            return "unbestaetigt", "Prämissen hängen im Kreis voneinander ab"
         aus_stati = [(i, self.behauptungen[i]["status"]) for i in self.aus.get(aid, [])]
         pro = self.belege_von(self.pro.get(aid, []))
         ungueltig = [b["id"] for b in pro if not self.zitat_ok(b)] if self.zitate else []
@@ -240,22 +280,40 @@ def _nachziehen(fall, streng=False):
     """Setzt jede Behauptung mit unzulässigem Status zurück; gibt [(ID, Grund)] zurück.
 
     `streng` (Laden einer Akte): Zitate werden am gespeicherten Text geprüft, und ein
-    ungeklärter Gegenbeleg zählt. Jede Behauptung wird höchstens einmal zurückgesetzt. Ist sie
-    danach noch unzulässig, stimmt die Akte in sich nicht, und das ist ein Fehler statt einer
-    Schleife ohne Ende."""
+    ungeklärter Gegenbeleg zählt. Ein Kontext für den ganzen Lauf: Wird eine Behauptung
+    zurückgesetzt, kommen nur die Schlussfolgerungen noch einmal an die Reihe, die auf ihr
+    beruhen. Die erste Fassung las nach jeder Runde alles neu, auch die Texte der Quellen. Jede
+    Behauptung wird höchstens einmal zurückgesetzt; ist sie danach noch unzulässig, stimmt die
+    Akte in sich nicht, und das ist ein Fehler statt einer Schleife ohne Ende."""
+    kontext = Kontext(fall, zitate=streng)
+    beruhen_auf = {}
+    for folgerung, praemissen in kontext.aus.items():
+        for praemisse in praemissen:
+            beruhen_auf.setdefault(praemisse, []).append(folgerung)
     zurueckgesetzt, erledigt = [], set()
-    while True:
-        kontext = Kontext(fall, zitate=streng)
-        faellig = [(a["id"], grund) for a in kontext.behauptungen.values()
-                   for grund in [status_unzulaessig(kontext, a, widerspruch=streng)] if grund]
-        if not faellig:
-            return zurueckgesetzt
-        for aid, grund in faellig:
-            if aid in erledigt:
+    offen = collections.deque(kontext.behauptungen)
+    while offen:
+        aid = offen.popleft()
+        a = kontext.behauptungen.get(aid)
+        if a is None:
+            continue
+        grund = status_unzulaessig(kontext, a, widerspruch=streng)
+        if not grund:
+            continue
+        if aid in erledigt:
+            raise Fehler("Behauptung %s bleibt nach dem Zurücksetzen unzulässig (%s)" % (aid, grund))
+        erledigt.add(aid)
+        zuruecksetzen(fall, aid)
+        a.update(status="werturteil" if a["art"] == "bewertung" else "ungeprueft", pruefer="", geprueft=None)
+        zurueckgesetzt.append((aid, grund))
+        offen.extend(beruhen_auf.get(aid, ()))
+    if zurueckgesetzt:
+        # Nachsehen statt annehmen: Steht in der Datenbank, was hier im Speicher gilt?
+        ist = dict(fall.conn.execute("SELECT id, status FROM behauptung").fetchall())
+        for aid, grund in zurueckgesetzt:
+            if ist.get(aid) != kontext.behauptungen[aid]["status"]:
                 raise Fehler("Behauptung %s bleibt nach dem Zurücksetzen unzulässig (%s)" % (aid, grund))
-            erledigt.add(aid)
-            zuruecksetzen(fall, aid)
-            zurueckgesetzt.append((aid, grund))
+    return zurueckgesetzt
 
 
 def obergrenzen_nachziehen(fall):

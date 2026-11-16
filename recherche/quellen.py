@@ -121,13 +121,18 @@ def finde_teile(teile, text_norm, max_spanne=MAX_ZITATSPANNE):
     start = text_norm.find(teile[0])
     while start >= 0:
         position = start + len(teile[0])
+        # Die weiteren Teile nur im erlaubten Fenster suchen: Sonst kostet jeder Anlauf einen Gang
+        # durch den ganzen Text, und ein Text aus lauter Anfängen macht daraus Minuten.
+        grenze = len(text_norm) if max_spanne is None else start + max_spanne
         for teil in teile[1:]:
-            gefunden = text_norm.find(teil, position)
+            gefunden = text_norm.find(teil, position, grenze)
             if gefunden < 0:
-                return None  # weiter rechts kann es erst recht nicht mehr passen
+                break
             position = gefunden + len(teil)
-        if max_spanne is None or position - start <= max_spanne:
+        else:
             return start
+        if max_spanne is None:
+            return None  # ohne Grenze kann es weiter rechts erst recht nicht mehr passen
         start = text_norm.find(teile[0], start + 1)
     return None
 

@@ -12,7 +12,7 @@ from unittest import mock
 
 from test_recherche_basis import ArchivHilfen, FallTest
 
-from recherche import bewertung, store
+from recherche import bewertung, quellen, store
 
 
 class AkteLaden(ArchivHilfen, FallTest):
@@ -289,7 +289,7 @@ class FeindlicheAkte(ArchivHilfen, FallTest):
         # Aus der Quellen-ID wird ein Verzeichnisname.
         self.grundfall()
         self.sql("UPDATE beleg SET quelle = '../../anderswo'")
-        self.abgelehnt(self.archiv_und_weg(), "unzulässiger Verweis in beleg.quelle")
+        self.abgelehnt(self.archiv_und_weg(), "Verweis ohne Ziel in beleg.quelle")
 
     def test_zaehler_unter_der_hoechsten_id(self):
         self.grundfall()
@@ -334,7 +334,68 @@ class FeindlicheAkte(ArchivHilfen, FallTest):
             self.skipTest("Diese SQLite-Fassung lässt das Umschreiben des Schemas nicht zu: %s" % fehler)
         if typ != "integer":
             self.skipTest("Der Wert wurde nicht als Zahl gespeichert")
+        # Vorher lief der Wert als Zahl in den Code und ließ ihn abstürzen. Jetzt gibt es zwei
+        # zulässige Ausgänge, je nach SQLite: Neuere Fassungen melden die Zahl schon bei der
+        # Prüfung der Datei, dann wird abgelehnt. Ältere tun das nicht; dann wird aus der Zahl
+        # Text, weil die Zeilen in eine frische Datenbank geschrieben werden.
+        ergebnis = self.cli("fall", "laden", self.archiv_und_weg())
+        if ergebnis.code != 0:
+            self.assertIn("nichts wurde geladen", ergebnis.err)
+            self.assertEqual(os.listdir(self.wurzel), [])
+            return
+        db = sqlite3.connect(os.path.join(self.wurzel, "t", "fall.db"))
+        self.assertEqual(db.execute("SELECT typeof(ursprung), ursprung FROM quelle").fetchone(), ("text", "42"))
+        db.close()
+        self.assertEqual(self.status("A1"), "belegt")
+
+    def test_wert_der_kein_text_werden_kann(self):
+        self.grundfall()
+        self.sql("UPDATE quelle SET ursprung = x'00ff'")
         self.abgelehnt(self.archiv_und_weg(), "Werte vom falschen Typ")
+
+    def test_verknuepfung_mit_einem_objekt_das_es_noch_nicht_gibt(self):
+        # Sie hinge sich an die nächste Behauptung, die der Empfänger anlegt.
+        _qid, bid, _aid = self.grundfall()
+        self.sql("INSERT INTO verknuepfung (art, von, zu) VALUES ('pro', 'A2', '%s')" % bid)
+        self.abgelehnt(self.archiv_und_weg(), "Verknüpfung ohne Ziel (pro)")
+
+    def test_verknuepfung_unbekannter_art_und_falscher_richtung(self):
+        _qid, bid, aid = self.grundfall()
+        self.sql("INSERT INTO verknuepfung (art, von, zu) VALUES ('pro', '%s', '%s')" % (bid, aid))
+        self.abgelehnt(self.archiv_und_weg(), "Verknüpfung ohne Ziel (pro)")
+
+    def test_unbekannte_art_einer_behauptung(self):
+        # „Bewertung“ großgeschrieben galt als Tatsache und durfte belegt sein.
+        self.grundfall()
+        self.sql("UPDATE behauptung SET art = 'Bewertung'")
+        self.abgelehnt(self.archiv_und_weg(), "unbekannter Wert in behauptung.art")
+
+    def test_zwei_zeilen_mit_derselben_id(self):
+        # Wie ein Archiv mit veraltetem Index: Die Tabelle hält zwei Zeilen A1, der Schlüssel fehlt.
+        self.grundfall()
+        pfad = os.path.join(self.wurzel, "t", "fall.db")
+        try:
+            db = sqlite3.connect(pfad)
+            original = db.execute("SELECT sql FROM sqlite_master WHERE name = 'behauptung'").fetchone()[0]
+            self.assertIn("id TEXT PRIMARY KEY", original)
+            db.execute("PRAGMA writable_schema = ON")
+            db.execute("UPDATE sqlite_master SET sql = ? WHERE name = 'behauptung'",
+                       (original.replace("id TEXT PRIMARY KEY", "id TEXT"),))
+            db.execute("DELETE FROM sqlite_master WHERE name = 'sqlite_autoindex_behauptung_1'")
+            db.commit()
+            db.close()
+            db = sqlite3.connect(pfad)
+            db.execute("INSERT INTO behauptung (id, text, art, status) VALUES ('A1', 'Zweite', 'tatsache', 'belegt')")
+            db.commit()
+            anzahl = db.execute("SELECT count(*) FROM behauptung WHERE id = 'A1'").fetchone()[0]
+            db.close()
+        except sqlite3.Error as fehler:
+            self.skipTest("Diese SQLite-Fassung lässt das Umschreiben des Schemas nicht zu: %s" % fehler)
+        if anzahl != 2:
+            self.skipTest("Die zweite Zeile ließ sich nicht anlegen")
+        ergebnis = self.fehler("fall", "laden", self.archiv_und_weg())
+        self.assertIn("nichts wurde geladen", ergebnis.err)
+        self.assertEqual(os.listdir(self.wurzel), [])
 
     def test_schlussfolgerungen_im_kreis_stuetzen_sich_nicht(self):
         _qid, _bid, a1 = self.grundfall()
@@ -379,11 +440,117 @@ class FeindlicheAkte(ArchivHilfen, FallTest):
 class Arbeitsverzeichnisse(FallTest):
     def test_alte_reste_werden_entfernt_frische_bleiben(self):
         self.neuer_fall("t")
+        vorgestern = time.time() - 2 * 86400
         vor_zwei_stunden = time.time() - 7200
-        for name, alt in ((".laden-alt", True), (".loeschen-alt", True), (".upload-frisch", False), (".anderes", True)):
+        for name, zeit in ((".laden-alt", vorgestern), (".loeschen-alt", vorgestern), (".upload-frisch", None),
+                           (".laden-laeuft-noch", vor_zwei_stunden), (".anderes", vorgestern)):
             pfad = os.path.join(self.wurzel, name)
             os.makedirs(os.path.join(pfad, "t"))
-            if alt:
-                os.utime(pfad, (vor_zwei_stunden, vor_zwei_stunden))
+            if zeit:
+                os.utime(pfad, (zeit, zeit))
         store.raeume_arbeitsverzeichnisse(self.wurzel)
-        self.assertEqual(sorted(os.listdir(self.wurzel)), [".anderes", ".upload-frisch", "t"])
+        self.assertEqual(sorted(os.listdir(self.wurzel)),
+                         [".anderes", ".laden-laeuft-noch", ".upload-frisch", "t"])
+
+
+class Rundreise(ArchivHilfen, FallTest):
+    """Eine mit den Befehlen des Werkzeugs gebaute Akte kommt unverändert zurück."""
+
+    TEXT = ("Der Stadtrat beschloss am 4. Mai 2024 den Verkauf des Grundstücks „Am Hafen“ an die Müller & Søn GmbH "
+            "– ohne Ausschreibung. Die Bürgermeisterin sagte: „Das war rechtlich einwandfrei.“ 🚢 "
+            "Der Rechnungshof rügte den Vorgang später deutlich und verlangte eine Prüfung der Unterlagen.")
+
+    def baue(self):
+        self.neuer_fall("t")
+        h = self.neue_id("hypothese", "neu", "--text", "Der Verkauf lief ohne Ausschreibung", "--prueft", "Beschluss",
+                         "--widerlegt", "Ausschreibung im Amtsblatt")
+        f = self.neue_id("frage", "neu", "--text", "Gab es eine Ausschreibung?", "--hypothese", h, "--plan", "Amtsblatt")
+        self.neue_id("frage", "neu", "--text", "Akteneinsicht beantragen", "--mensch")
+        self.ok("suche", "notieren", "--anfrage", "Ausschreibung Hafen", "--frage", f, "--richtung", "contra", "--treffer", "0")
+        self.ok("suche", "notieren", "--anfrage", "Stadtrat Verkauf", "--hypothese", h)
+        q1 = self.quelle(self.TEXT, typ="amtlich", zuv="A", titel="Protokoll")
+        q2 = self.quelle("Ein Blog schreibt: Der Verkauf war völlig in Ordnung, sagen Beteiligte dort. Mehr steht da nicht.",
+                         typ="blog", zuv="D", ursprung=q1, titel="Blog")
+        b1 = self.beleg(q1, "Der Stadtrat beschloss am 4. Mai 2024 den Verkauf […] ohne Ausschreibung.", direkt=True)
+        b2 = self.beleg(q1, "„Das war rechtlich einwandfrei.“", direkt=True)
+        b3 = self.beleg(q2, "Der Verkauf war völlig in Ordnung")
+        a1 = self.behauptung("Der Stadtrat verkaufte das Grundstück ohne Ausschreibung.", "tatsache", "--pro", b1,
+                             "--hypothese", h)
+        a2 = self.behauptung("Die Bürgermeisterin hält den Verkauf für rechtmäßig.", "tatsache", "--pro", b2,
+                             "--zuschreibung")
+        a3 = self.behauptung("Der Verkauf könnte rechtswidrig gewesen sein.", "verdacht", "--pro", b1, "--contra", b3,
+                             "--belastend")
+        a4 = self.behauptung("Eine Ausschreibung wurde umgangen.", "schlussfolgerung", "--aus", a1)
+        a5 = self.behauptung("Das Vorgehen war unsauber.", "bewertung", "--aus", a1)
+        for aid, status in ((a1, "belegt"), (a2, "belegt"), (a3, "strittig"), (a4, "gestuetzt")):
+            self.ok("behauptung", "pruefen", aid, "--status", status, "--vermerk", "geprüft", "--pruefer", "dok")
+        p1 = self.neue_id("akteur", "neu", "--art", "person", "--name", "Erika Mustermann", "--kategorie", "amtstraeger",
+                          "--kennung", "funktion=Bürgermeisterin", "--kennung", "seit=2019", "--beleg", b2)
+        o1 = self.neue_id("akteur", "neu", "--art", "organisation", "--name", "Müller & Søn GmbH", "--beleg", b1)
+        self.ok("behauptung", "setzen", a3, "--betrifft", "%s,%s" % (p1, o1))
+        self.ok("beziehung", "neu", "--von", p1, "--zu", o1, "--art", "verkaufte an", "--von-datum", "2024-05", "--beleg", b1)
+        self.ok("ereignis", "neu", "--datum", "2024-05-04", "--text", "Beschluss im Stadtrat", "--beleg", b1, "--akteur", p1)
+        k1 = self.neue_id("konfrontation", "neu", "--akteur", p1, "--frage", "Warum gab es keine Ausschreibung?", "--zu", a3)
+        self.ok("konfrontation", "status", k1, "gesendet", "--am", "2026-01-02", "--frist", "2026-01-16")
+        self.ok("konfrontation", "antwort", k1, "--text", "Kein Kommentar.", "--quelle", q1)
+        self.ok("fall", "setzen", "--zusammenfassung", "Der Verkauf lief ohne Ausschreibung [%s]." % a1)
+        return a5
+
+    def test_export_ist_nach_sichern_und_laden_derselbe(self):
+        bewertung_id = self.baue()
+        vorher = self.export()
+        self.assertEqual({a["status"] for a in vorher["behauptungen"]},
+                         {"belegt", "strittig", "gestuetzt", "werturteil"})
+        archiv = self.gesichertes_archiv("t")
+        shutil.rmtree(os.path.join(self.wurzel, "t"))
+        self.assertEqual(self.ok("fall", "laden", archiv).zeilen, ["geladen: t"])  # nichts zurückgesetzt
+        nachher = self.export()
+        for daten in (vorher, nachher):
+            daten["fall"].pop("stand")
+        self.assertEqual(vorher, nachher)
+        self.assertEqual(self.status(bewertung_id), "werturteil")
+
+    def test_klaerung_entfernen_setzt_die_pruefung_zurueck(self):
+        # Sonst trüge dieselbe Akte nach dem Laden einen anderen Status als vorher.
+        self.neuer_fall("t")
+        q = self.quelle(self.TEXT, typ="amtlich", zuv="A")
+        pro = self.beleg(q, "Der Stadtrat beschloss am 4. Mai 2024 den Verkauf", direkt=True)
+        gegen = self.beleg(q, "„Das war rechtlich einwandfrei.“")
+        aid = self.behauptung("Der Verkauf wurde beschlossen.", "tatsache", "--pro", pro, "--contra", gegen)
+        self.ok("behauptung", "setzen", aid, "--klaerung", "Die Aussage betrifft die Rechtslage, nicht den Beschluss.")
+        self.ok("behauptung", "pruefen", aid, "--status", "belegt", "--vermerk", "ok", "--pruefer", "dok")
+        ergebnis = self.ok("behauptung", "setzen", aid, "--klaerung", "")
+        self.assertIn("hinweis: Prüfung zurückgesetzt", ergebnis.out)
+        self.assertEqual(self.status(aid), "ungeprueft")
+
+
+class Laufzeit(ArchivHilfen, FallTest):
+    def test_lange_kette_von_schlussfolgerungen_laedt_schnell(self):
+        # Die erste Fassung brauchte für 800 Glieder über zwei Minuten und hielt dabei die Sperre des Servers.
+        self.neuer_fall("t")
+        glieder = 3000
+        db = sqlite3.connect(os.path.join(self.wurzel, "t", "fall.db"))
+        with db:
+            db.execute("INSERT INTO behauptung (id, text, art, status) VALUES ('A1', 'Grund', 'tatsache', 'belegt')")
+            db.executemany("INSERT INTO behauptung (id, text, art, status) VALUES (?, 'Folge', 'schlussfolgerung', 'gestuetzt')",
+                           [("A%d" % i,) for i in range(2, glieder + 2)])
+            db.executemany("INSERT INTO verknuepfung (art, von, zu) VALUES ('aus', ?, ?)",
+                           [("A%d" % i, "A%d" % (i - 1)) for i in range(2, glieder + 2)])
+            db.execute("INSERT INTO zaehler (praefix, n) VALUES ('A', ?)", (glieder + 1,))
+        db.close()
+        archiv = self.gesichertes_archiv("t")
+        shutil.rmtree(os.path.join(self.wurzel, "t"))
+        beginn = time.monotonic()
+        slug, zurueck = bewertung.lade_akte(self.wurzel, archiv, "tester", "Test")
+        dauer = time.monotonic() - beginn
+        self.assertEqual(len(zurueck), glieder + 1)  # der unbelegte Grund und alles, was auf ihm ruht
+        self.assertLess(dauer, 30, "Laden einer Kette von %d Gliedern dauerte %.1f s" % (glieder, dauer))
+
+    def test_zitatsuche_bleibt_bei_lauter_anfaengen_schnell(self):
+        # Jede Stelle ist ein möglicher Anfang; vorher kostete jeder einen Gang durch den ganzen Text.
+        text = quellen.normalisiere("a" * 300000 + " bbbbbbbbbb")
+        beginn = time.monotonic()
+        self.assertIsNone(quellen.finde_teile(["aaaaaaaaaaaaaaaa", "cccccccccc"], text))
+        gefunden = quellen.finde_teile(["aaaaaaaaaaaaaaaa", "bbbbbbbbbb"], text)
+        self.assertLess(time.monotonic() - beginn, 20)
+        self.assertEqual(gefunden, len(text) - quellen.MAX_ZITATSPANNE)  # der erste Anfang, von dem aus es reicht
