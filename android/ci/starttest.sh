@@ -52,8 +52,10 @@ done
 adb exec-out screencap -p > "$OUT/screenshot.png" 2> /dev/null
 adb logcat -d > "$OUT/logcat.txt" 2>&1
 
-echo "---- relevante logcat-Zeilen ----"
-grep -E 'recherche|python\.std|AndroidRuntime|FATAL|chaquopy' "$OUT/logcat.txt" | head -60
+echo "---- logcat, Tag recherche ----"
+grep -E ' recherche: ' "$OUT/logcat.txt" | head -20
+echo "---- logcat, Python-Ausgabe und Abstürze ----"
+grep -E 'python\.std(out|err)|AndroidRuntime|FATAL' "$OUT/logcat.txt" | head -40
 echo "---------------------------------"
 echo "python_ok=$python_ok server_ok=$server_ok ui_ok=$ui_ok absturz=$absturz UI_PFLICHT=$UI_PFLICHT"
 

@@ -114,11 +114,22 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      # Eine öffentliche Vorabversion enthält nur Builds, deren Oberfläche geprüft wurde.
+      # Der env-Kontext gilt nicht in 'if' auf Job-Ebene, deshalb der Umweg über einen Output.
+      - name: Oberflächenprüfung verlangt?
+        id: ui
+        run: |
+          echo "pflicht=$UI_PFLICHT" >> "$GITHUB_OUTPUT"
+          if [ "$UI_PFLICHT" != "1" ]; then
+            echo "Vorabversion wird erst mit geprüfter Oberfläche veröffentlicht."
+          fi
       - uses: actions/download-artifact@v8
+        if: steps.ui.outputs.pflicht == '1'
         with:
           name: recherche-apk
           path: apk
       - name: Release ersetzen
+        if: steps.ui.outputs.pflicht == '1'
         run: |
           sha=$(sha256sum apk/recherche-debug.apk | cut -d' ' -f1)
           {
