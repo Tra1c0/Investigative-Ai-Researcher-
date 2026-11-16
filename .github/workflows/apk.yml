@@ -1,0 +1,25 @@
+name: APK
+
+on:
+  push:
+    branches: ["ccr-f03ca82c-8hm3p9", "main"]
+    paths:
+      - "android/**"
+      - "recherche/**"
+      - ".github/workflows/apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Werkzeuge auf dem Runner
+        run: |
+          java -version 2>&1 | head -1
+          gradle --version | grep -E "^Gradle" || true
+          python3 --version
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools" 2>/dev/null | tr '\n' ' '
