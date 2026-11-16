@@ -48,26 +48,29 @@ jobs:
           if find android -path '*/build' -prune -o -name '__init__.py' -print | grep .; then
             echo "Unter android/ liegt eine Kopie des Pakets"; exit 1
           fi
-      - name: Verfügbare Versionen des Android-Gradle-Plugins (nur zur Information)
-        run: |
-          curl -fsS https://dl.google.com/dl/android/maven2/com/android/application/com.android.application.gradle.plugin/maven-metadata.xml \
-            | grep -E '<version>8\.1[0-9]|<latest>|<release>|<version>9\.' | tr -d ' \n'; echo || true
       - name: APK bauen
         working-directory: android
-        run: ./gradlew --no-daemon --console=plain :app:assembleDebug
-      - name: Chaquopy-Tasks (nur zur Information)
-        working-directory: android
-        run: ./gradlew --no-daemon --console=plain -q :app:tasks --all | grep -i python || true
+        run: ./gradlew --no-daemon --console=plain :app:assembleRelease
       - name: APK bereitstellen
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk recherche-debug.apk
-          ls -l recherche-debug.apk
-          sha256sum recherche-debug.apk
-          unzip -l recherche-debug.apk | grep -E 'assets/chaquopy|libpython|lib/(arm64-v8a|x86_64)/' | head -20
+          cp android/app/build/outputs/apk/release/app-release.apk recherche.apk
+          ls -l recherche.apk
+          sha256sum recherche.apk
+      - name: APK prüfen (nicht debuggable, signiert)
+        run: |
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
+          echo "build-tools: $bt"
+          "$bt/aapt2" dump badging recherche.apk > badging.txt
+          grep -E "^package|^sdkVersion|^targetSdkVersion|^uses-permission|application-debuggable" badging.txt || true
+          if grep -q "application-debuggable" badging.txt; then
+            echo "FEHLER: Die APK ist debuggable"; exit 1
+          fi
+          "$bt/apksigner" verify --verbose recherche.apk
+          unzip -l recherche.apk | grep -E 'assets/chaquopy/(app|requirements)' || true
       - uses: actions/upload-artifact@v7
         with:
           name: recherche-apk
-          path: recherche-debug.apk
+          path: recherche.apk
           if-no-files-found: error
 
   starttest:
@@ -92,7 +95,7 @@ jobs:
           arch: x86_64
           target: google_apis
           disable-animations: true
-          script: bash android/ci/starttest.sh apk/recherche-debug.apk starttest-out
+          script: bash android/ci/starttest.sh apk/recherche.apk starttest-out
       - name: Ergebnis des Starttests
         if: always()
         uses: actions/upload-artifact@v7
@@ -131,17 +134,18 @@ jobs:
       - name: Release ersetzen
         if: steps.ui.outputs.pflicht == '1'
         run: |
-          sha=$(sha256sum apk/recherche-debug.apk | cut -d' ' -f1)
+          sha=$(sha256sum apk/recherche.apk | cut -d' ' -f1)
           {
             echo "Commit: ${GITHUB_SHA::7}"
             echo "Gebaut am: $(date -u +%Y-%m-%d)"
             echo "SHA-256: $sha"
             echo
-            echo "Debug-Build zum direkten Installieren. Enthält keine Falldaten und keine KI; die Agenten laufen in Claude Code."
+            echo "Testbuild zum direkten Installieren. Enthält keine Falldaten und keine KI; die Agenten laufen in Claude Code."
+            echo "Mit dem Debug-Schlüssel des Build-Rechners signiert, der bei jedem Lauf neu entsteht: Eine neuere Version lässt sich nicht über diese installieren. Erst deinstallieren, vorher die Fälle exportieren."
           } > notes.md
           cat notes.md
           gh release delete apk-vorab --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || echo "Kein altes Release vorhanden"
-          gh release create apk-vorab apk/recherche-debug.apk \
+          gh release create apk-vorab apk/recherche.apk \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "Recherche-App (Vorabversion)" \
@@ -149,4 +153,4 @@ jobs:
             --notes-file notes.md
           gh release view apk-vorab --repo "$GITHUB_REPOSITORY" --json assets,isPrerelease,targetCommitish \
             --jq '"prerelease=\(.isPrerelease) ziel=\(.targetCommitish) assets=\([.assets[] | "\(.name) \(.size) \(.digest)"] | join(","))"'
-          echo "Download: https://github.com/$GITHUB_REPOSITORY/releases/download/apk-vorab/recherche-debug.apk"
+          echo "Download: https://github.com/$GITHUB_REPOSITORY/releases/download/apk-vorab/recherche.apk"

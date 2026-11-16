@@ -19,6 +19,16 @@ android {
         }
     }
 
+    buildTypes {
+        release {
+            minifyEnabled false
+            // Der Debug-Schluessel genuegt zum Installieren und braucht kein Geheimnis;
+            // die App selbst ist trotzdem nicht debuggable (sonst laesst sich ihr
+            // Verzeichnis per adb run-as lesen).
+            signingConfig signingConfigs.debug
+        }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -47,7 +57,7 @@ chaquopy {
     defaultConfig {
         version = '3.13'
         pip {
-            install 'pypdf'
+            install 'pypdf==7.1.0'
         }
     }
     sourceSets {
